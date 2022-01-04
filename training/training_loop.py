@@ -127,6 +127,7 @@ def training_loop(
         cudnn_benchmark=True,  # Enable torch.backends.cudnn.benchmark?
         abort_fn=None,  # Callback function for determining whether to abort training. Must return consistent results across ranks.
         progress_fn=None,  # Callback function for updating training progress. Called for all ranks.
+        slurm=False,  # key for slurm training
 ):
 
     # Initialize.
@@ -296,8 +297,12 @@ def training_loop(
     if rank == 0:
         stats_jsonl = open(os.path.join(run_dir, 'stats.jsonl'), 'wt')
         try:
-            import torch.utils.tensorboard as tensorboard
-            stats_tfevents = tensorboard.SummaryWriter(run_dir)
+            if slurm:
+                from pavi import SummaryWriter as Writer
+                stats_tfevents = Writer('# TODO')
+            else:
+                import torch.utils.tensorboard as tensorboard
+                stats_tfevents = tensorboard.SummaryWriter(run_dir)
         except ImportError as err:
             print('Skipping tfevents export:', err)
 

@@ -18,7 +18,7 @@ import torch
 
 import dnnlib
 from metrics import metric_main
-from torch_utils import custom_ops, training_stats
+from torch_utils import custom_ops, misc, training_stats
 from training import training_loop
 
 # ---------------------------------------------------------------------------
@@ -29,8 +29,8 @@ def subprocess_fn(rank, c, temp_dir):
                        file_mode='a',
                        should_flush=True)
 
-    # Init torch.distributed.
-    if c.num_gpus > 1:
+    # Init torch.distributed. (but we have init slurm in the outer function)
+    if c.num_gpus > 1 and not c.slurm:
         init_file = os.path.abspath(
             os.path.join(temp_dir, '.torch_distributed_init'))
         if os.name == 'nt':
@@ -59,6 +59,32 @@ def subprocess_fn(rank, c, temp_dir):
 # ---------------------------------------------------------------------------
 
 
+def init_slurm_args(port=None):
+    import subprocess
+    proc_id = int(os.environ['SLURM_PROCID'])
+    ntasks = int(os.environ['SLURM_NTASKS'])
+    node_list = os.environ['SLURM_NODELIST']
+    num_gpus = torch.cuda.device_count()
+    torch.cuda.set_device(proc_id % num_gpus)
+    addr = subprocess.getoutput(
+        f'scontrol show hostname {node_list} | head -n1')
+    # specify master port
+    if port is not None:
+        os.environ['MASTER_PORT'] = str(port)
+    elif 'MASTER_PORT' in os.environ:
+        pass  # use MASTER_PORT in the environment variable
+    else:
+        # 29500 is torch.distributed default port
+        os.environ['MASTER_PORT'] = '29500'
+    # use MASTER_ADDR in the environment variable if it already exists
+    if 'MASTER_ADDR' not in os.environ:
+        os.environ['MASTER_ADDR'] = addr
+    os.environ['WORLD_SIZE'] = str(ntasks)
+    os.environ['LOCAL_RANK'] = str(proc_id % num_gpus)
+    os.environ['RANK'] = str(proc_id)
+    torch.distributed.init_process_group(backend='nccl')
+
+
 def launch_training(c, desc, outdir, dry_run):
     dnnlib.util.Logger(should_flush=True)
 
@@ -84,7 +110,10 @@ def launch_training(c, desc, outdir, dry_run):
     print(f'Number of GPUs:      {c.num_gpus}')
     print(f'Batch size:          {c.batch_size} images')
     print(f'Training duration:   {c.total_kimg} kimg')
-    print(f'Dataset path:        {c.training_set_kwargs.path}')
+    if hasattr(c.training_set_kwargs, 'path'):
+        print(f'Dataset path:        {c.training_set_kwargs.path}')
+    else:
+        print(f'Dataset name:        {c.training_set_kwargs.name}')
     print(f'Dataset size:        {c.training_set_kwargs.max_size} images')
     print(f'Dataset resolution:  {c.training_set_kwargs.resolution}')
     print(f'Dataset labels:      {c.training_set_kwargs.use_labels}')
@@ -105,26 +134,46 @@ def launch_training(c, desc, outdir, dry_run):
     # Launch processes.
     print('Launching processes...')
     torch.multiprocessing.set_start_method('spawn')
-    with tempfile.TemporaryDirectory() as temp_dir:
-        if c.num_gpus == 1:
-            subprocess_fn(rank=0, c=c, temp_dir=temp_dir)
-        else:
-            torch.multiprocessing.spawn(fn=subprocess_fn,
-                                        args=(c, temp_dir),
-                                        nprocs=c.num_gpus)
+    if c.slurm:
+        init_slurm_args()
+        rank, ws = misc.get_dist_info()
+        dnnlib.util.Logger(file_name=os.path.join(c.run_dir, 'log.txt'),
+                           file_mode='a',
+                           should_flush=True)
+        subprocess_fn(rank=rank, c=c, temp_dir=None)
+    else:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            if c.num_gpus == 1:
+                subprocess_fn(rank=0, c=c, temp_dir=temp_dir)
+            else:
+                torch.multiprocessing.spawn(fn=subprocess_fn,
+                                            args=(c, temp_dir),
+                                            nprocs=c.num_gpus)
 
 
 # ---------------------------------------------------------------------------
 
 
-def init_dataset_kwargs(data):
+def init_dataset_kwargs(data=None, subset=None, slurm=False):
     try:
-        dataset_kwargs = dnnlib.EasyDict(
-            class_name='training.dataset.ImageFolderDataset',
-            path=data,
-            use_labels=True,
-            max_size=None,
-            xflip=False)
+        class_parent = 'training.dataset.{}'
+        class_name = 'ImageFolderDataset'
+        if data is not None:
+            class_name = class_parent.format(class_name)
+            kwargs = dict(path=data)
+        elif subset is not None:
+            class_name = class_parent.format('MM' + class_name)
+            kwargs = dict(name=subset, slurm=slurm)
+        else:
+            raise ValueError(
+                'data and name must not be None at the same time.')
+
+        dataset_kwargs = dnnlib.EasyDict(class_name=class_name,
+                                         use_labels=True,
+                                         max_size=None,
+                                         xflip=False,
+                                         **kwargs)
+
         dataset_obj = dnnlib.util.construct_class_by_name(
             **dataset_kwargs)  # Subclass of training.dataset.Dataset.
         dataset_kwargs.resolution = dataset_obj.resolution  # Be explicit about resolution.
@@ -160,11 +209,8 @@ def parse_comma_separated_list(s):
               help='Base configuration',
               type=click.Choice(['stylegan3-t', 'stylegan3-r', 'stylegan2']),
               required=True)
-@click.option('--data',
-              help='Training data',
-              metavar='[ZIP|DIR]',
-              type=str,
-              required=True)
+@click.option('--data', help='Training data', metavar='[ZIP|DIR]', type=str)
+@click.option('--subset', help='Subset of training data', type=str)
 @click.option('--gpus',
               help='Number of GPUs to use',
               metavar='INT',
@@ -314,6 +360,7 @@ def parse_comma_separated_list(s):
               '--dry-run',
               help='Print training options and exit',
               is_flag=True)
+@click.option('--slurm', is_flag=True, help='Whether run code in slurm mode.')
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper "Alias-Free
     Generative Adversarial Networks".
@@ -359,7 +406,8 @@ def main(**kwargs):
     c.data_loader_kwargs = dnnlib.EasyDict(pin_memory=True, prefetch_factor=2)
 
     # Training set.
-    c.training_set_kwargs, dataset_name = init_dataset_kwargs(data=opts.data)
+    c.training_set_kwargs, dataset_name = init_dataset_kwargs(
+        data=opts.data, subset=opts.subset, slurm=opts.slurm)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException(
             '--cond=True requires labels specified in dataset.json')
@@ -456,6 +504,9 @@ def main(**kwargs):
         c.G_kwargs.conv_clamp = c.D_kwargs.conv_clamp = None
     if opts.nobench:
         c.cudnn_benchmark = False
+
+    # slurm related setting.
+    c.slurm = opts.slurm
 
     # Description string.
     desc = f'{opts.cfg:s}-{dataset_name:s}-gpus{c.num_gpus:d}-batch{c.batch_size:d}-gamma{c.loss_kwargs.r1_gamma:g}'

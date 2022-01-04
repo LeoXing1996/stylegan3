@@ -12,6 +12,7 @@ import warnings
 
 import numpy as np
 import torch
+from torch import distributed as dist
 
 import dnnlib
 
@@ -335,3 +336,13 @@ def print_module_summary(module, inputs, max_nesting=3, skip_redundant=True):
 
 
 # ---------------------------------------------------------------------------
+
+
+def get_dist_info():
+    if dist.is_available() and dist.is_initialized():
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
+    else:
+        rank = 0
+        world_size = 1
+    return rank, world_size
