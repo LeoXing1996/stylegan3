@@ -15,6 +15,7 @@ import tempfile
 
 import click
 import torch
+from torch import distributed as dist
 
 import dnnlib
 from metrics import metric_main
@@ -25,12 +26,12 @@ from training import training_loop
 
 
 def subprocess_fn(rank, c, temp_dir):
-    dnnlib.util.Logger(file_name=os.path.join(c.run_dir, 'log.txt'),
-                       file_mode='a',
-                       should_flush=True)
 
     # Init torch.distributed. (but we have init slurm in the outer function)
     if c.num_gpus > 1 and not c.slurm:
+        dnnlib.util.Logger(file_name=os.path.join(c.run_dir, 'log.txt'),
+                           file_mode='a',
+                           should_flush=True)
         init_file = os.path.abspath(
             os.path.join(temp_dir, '.torch_distributed_init'))
         if os.name == 'nt':
@@ -92,23 +93,41 @@ def launch_training(c, desc, outdir, dry_run):
     if c.slurm:
         init_slurm_args()
         rank, ws = misc.get_dist_info()
-        dnnlib.util.Logger(file_name=os.path.join(c.run_dir, 'log.txt'),
-                           file_mode='a',
-                           should_flush=True)
-
-    if not c.slurm or (c.slurm and rank == 0):
-        # Pick output directory.
-        prev_run_dirs = []
-        if os.path.isdir(outdir):
-            prev_run_dirs = [
-                x for x in os.listdir(outdir)
-                if os.path.isdir(os.path.join(outdir, x))
+        # get and make run_dir at rank 0
+        if rank == 0:
+            # Pick output directory.
+            prev_run_dirs = []
+            if os.path.isdir(outdir):
+                prev_run_dirs = [
+                    x for x in os.listdir(outdir)
+                    if os.path.isdir(os.path.join(outdir, x))
+                ]
+            prev_run_ids = [re.match(r'^\d+', x) for x in prev_run_dirs]
+            prev_run_ids = [
+                int(x.group()) for x in prev_run_ids if x is not None
             ]
+            cur_run_id = max(prev_run_ids, default=-1) + 1
+            c.run_dir = os.path.join(outdir, f'{cur_run_id:05d}-{desc}')
+            assert not os.path.exists(c.run_dir)
+            print('Creating output directory...')
+            os.makedirs(c.run_dir)
+            with open(os.path.join(c.run_dir, 'training_options.json'),
+                      'wt') as f:
+                json.dump(c, f, indent=2)
+
+            dnnlib.util.Logger(file_name=os.path.join(c.run_dir, 'log.txt'),
+                               file_mode='a',
+                               should_flush=True)
+        dist.barrier()
+        # get run_dir and write to c.run_dir
+        prev_run_dirs = [
+            x for x in os.listdir(outdir)
+            if os.path.isdir(os.path.join(outdir, x))
+        ]
         prev_run_ids = [re.match(r'^\d+', x) for x in prev_run_dirs]
         prev_run_ids = [int(x.group()) for x in prev_run_ids if x is not None]
-        cur_run_id = max(prev_run_ids, default=-1) + 1
+        cur_run_id = max(prev_run_ids, default=-1)  # run dir made by rank0
         c.run_dir = os.path.join(outdir, f'{cur_run_id:05d}-{desc}')
-        assert not os.path.exists(c.run_dir)
 
     # Print options.
     if not c.slurm or (c.slurm and rank == 0):
@@ -137,11 +156,6 @@ def launch_training(c, desc, outdir, dry_run):
 
     # Create output directory.
     if not c.slurm or (c.slurm and rank == 0):
-        print('Creating output directory...')
-        os.makedirs(c.run_dir)
-        with open(os.path.join(c.run_dir, 'training_options.json'), 'wt') as f:
-            json.dump(c, f, indent=2)
-
         print('Launching processes...')
 
     # Launch processes.
