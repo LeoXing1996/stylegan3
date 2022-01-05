@@ -128,6 +128,22 @@ def launch_training(c, desc, outdir, dry_run):
         prev_run_ids = [int(x.group()) for x in prev_run_ids if x is not None]
         cur_run_id = max(prev_run_ids, default=-1)  # run dir made by rank0
         c.run_dir = os.path.join(outdir, f'{cur_run_id:05d}-{desc}')
+    else:
+        prev_run_dirs = []
+        if os.path.isdir(outdir):
+            prev_run_dirs = [
+                x for x in os.listdir(outdir)
+                if os.path.isdir(os.path.join(outdir, x))
+            ]
+        prev_run_ids = [re.match(r'^\d+', x) for x in prev_run_dirs]
+        prev_run_ids = [int(x.group()) for x in prev_run_ids if x is not None]
+        cur_run_id = max(prev_run_ids, default=-1) + 1
+        c.run_dir = os.path.join(outdir, f'{cur_run_id:05d}-{desc}')
+        assert not os.path.exists(c.run_dir)
+        print('Creating output directory...')
+        os.makedirs(c.run_dir)
+        with open(os.path.join(c.run_dir, 'training_options.json'), 'wt') as f:
+            json.dump(c, f, indent=2)
 
     # Print options.
     if not c.slurm or (c.slurm and rank == 0):
