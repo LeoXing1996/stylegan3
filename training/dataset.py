@@ -320,6 +320,20 @@ class MMImageFolderDataset(ImageFolderDataset):
             'non_slurm': {
                 'backend': 'disk'
             }
+        },
+        ffhq={
+            'path': './data/ffhq256/',
+            'slurm': {
+                'backend': 'petrel',
+                'path_mapping': {
+                    './data/ffhq256':
+                    'openmmlab:s3://openmmlab/datasets/editing/ffhq/ffhq_imgs/ffhq_256/'
+                },
+                'enable_mc': True
+            },
+            'non_slurm': {
+                'backend': 'disk'
+            }
         })
 
     def __init__(self, name, resolution=None, slurm=False, **super_kwargs):
