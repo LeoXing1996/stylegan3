@@ -261,6 +261,49 @@ class ImageFolderDataset(Dataset):
 # ---------------------------------------------------------------------------
 
 
+class CenterCropLongEdge:
+    """Center crop the given image by the long edge.
+
+    Args:
+        keys (list[str]): The images to be cropped.
+    """
+    def __init__(self, keys):
+        assert keys, 'Keys should not be empty.'
+        self.keys = keys
+
+    def __call__(self, results):
+        """Call function.
+
+        Args:
+            results (dict): A dict containing the necessary information and
+                data for augmentation.
+
+        Returns:
+            dict: A dict containing the processed data and information.
+        """
+
+        for key in self.keys:
+            img = results[key]
+            img_height, img_width = img.shape[:2]
+            crop_size = min(img_height, img_width)
+            y1 = 0 if img_height == crop_size else \
+                int(round(img_height - crop_size) / 2)
+            x1 = 0 if img_width == crop_size else \
+                int(round(img_width - crop_size) / 2)
+            y2 = y1 + crop_size - 1
+            x2 = x1 + crop_size - 1
+
+            img = mmcv.imcrop(img, bboxes=np.array([x1, y1, x2, y2]))
+            results[key] = img
+
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += (f'(keys={self.keys})')
+        return repr_str
+
+
 class MMImageFolderDataset(ImageFolderDataset):
 
     _handler_cfg = dict(
@@ -292,6 +335,15 @@ class MMImageFolderDataset(ImageFolderDataset):
 
         super().__init__(path=path, resolution=resolution, **super_kwargs)
 
+    @staticmethod
+    def center_crop(width, height, img):
+        crop = np.min(img.shape[:2])
+        img = img[(img.shape[0] - crop) // 2:(img.shape[0] + crop) // 2,
+                  (img.shape[1] - crop) // 2:(img.shape[1] + crop) // 2]
+        img = PIL.Image.fromarray(img, 'RGB')
+        img = img.resize((width, height), PIL.Image.LANCZOS)
+        return np.array(img)
+
     def _load_raw_image(self, raw_idx):
         fname = self._image_fnames[raw_idx]
         fname = os.path.join(self._path, fname)
@@ -303,5 +355,8 @@ class MMImageFolderDataset(ImageFolderDataset):
                                  channel_order='rgb',
                                  backend='pillow')
 
+        if self.is_slurm:
+            # NOTE: hard code width and height here
+            image = self.center_crop(256, 256, image)
         image = image.transpose(2, 0, 1)  # HWC => CHW
         return image
