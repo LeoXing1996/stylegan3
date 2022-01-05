@@ -313,7 +313,7 @@ class MMImageFolderDataset(ImageFolderDataset):
                 'backend': 'petrel',
                 'path_mapping': {
                     './data/lsun-car/':
-                    'openmmlab:s3://openmmlab/datasets/editing/lsun/images/car_train/'
+                    'openmmlab:s3://openmmlab/datasets/editing/lsun/images/car/'
                 },
                 'enable_mc': True,
             },
