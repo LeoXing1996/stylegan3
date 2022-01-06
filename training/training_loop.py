@@ -175,6 +175,13 @@ def training_loop(
     # Construct networks.
     if rank == 0:
         print('Constructing networks...')
+
+    from torch import distributed as dist
+    if rank == 0:
+        import ipdb
+        ipdb.set_trace()
+    dist.barrier()
+
     common_kwargs = dict(c_dim=training_set.label_dim,
                          img_resolution=training_set.resolution,
                          img_channels=training_set.num_channels)
@@ -559,7 +566,8 @@ def training_loop(
             stats_jsonl.write(json.dumps(fields) + '\n')
             stats_jsonl.flush()
         if stats_tfevents is not None:
-            global_step = int(cur_nimg / 1e3)
+            # global_step = int(cur_nimg / 1e3)
+            global_step = cur_nimg
             walltime = timestamp - start_time
             for name, value in stats_dict.items():
                 stats_tfevents.add_scalar(name,
