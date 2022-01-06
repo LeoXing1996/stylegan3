@@ -176,12 +176,6 @@ def training_loop(
     if rank == 0:
         print('Constructing networks...')
 
-    from torch import distributed as dist
-    if rank == 0:
-        import ipdb
-        ipdb.set_trace()
-    dist.barrier()
-
     common_kwargs = dict(c_dim=training_set.label_dim,
                          img_resolution=training_set.resolution,
                          img_channels=training_set.num_channels)
