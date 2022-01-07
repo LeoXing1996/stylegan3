@@ -335,6 +335,8 @@ def training_loop(
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
+            import ipdb
+            ipdb.set_trace()
             phase_real_img = (
                 phase_real_img.to(device).to(torch.float32) / 127.5 -
                 1).split(batch_gpu)
@@ -474,6 +476,7 @@ def training_loop(
         training_stats.report0('Timing/total_days',
                                (tick_end_time - start_time) / (24 * 60 * 60))
         if rank == 0:
+            print(f'batch_size: {batch_size}, cur_nimg: {cur_nimg}')
             print(' '.join(fields))
 
         # Check for abort.
@@ -560,19 +563,22 @@ def training_loop(
             stats_jsonl.write(json.dumps(fields) + '\n')
             stats_jsonl.flush()
         if stats_tfevents is not None:
-            # global_step = int(cur_nimg / 1e3)
-            global_step = cur_nimg
+            global_step = int(cur_nimg / 1e3)
             walltime = timestamp - start_time
+
+            # pavi and tfboard have different input args,
+            # use this dict to input correct args
+            if slurm:
+                iter_time_dict = dict(global_step=global_step,
+                                      walltime=walltime)
+            else:
+                iter_time_dict = dict(iteration=global_step)
+
             for name, value in stats_dict.items():
-                stats_tfevents.add_scalar(name,
-                                          value.mean,
-                                          global_step=global_step,
-                                          walltime=walltime)
+                stats_tfevents.add_scalar(name, value.mean, **iter_time_dict)
             for name, value in stats_metrics.items():
-                stats_tfevents.add_scalar(f'Metrics/{name}',
-                                          value,
-                                          global_step=global_step,
-                                          walltime=walltime)
+                stats_tfevents.add_scalar(f'Metrics/{name}', value,
+                                          **iter_time_dict)
             stats_tfevents.flush()
         if progress_fn is not None:
             progress_fn(cur_nimg // 1000, total_kimg)
