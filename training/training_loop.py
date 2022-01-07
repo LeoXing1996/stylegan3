@@ -335,8 +335,6 @@ def training_loop(
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
-            import ipdb
-            ipdb.set_trace()
             phase_real_img = (
                 phase_real_img.to(device).to(torch.float32) / 127.5 -
                 1).split(batch_gpu)
