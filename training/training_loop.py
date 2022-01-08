@@ -567,10 +567,10 @@ def training_loop(
             # pavi and tfboard have different input args,
             # use this dict to input correct args
             if slurm:
+                iter_time_dict = dict(iteration=global_step)
+            else:
                 iter_time_dict = dict(global_step=global_step,
                                       walltime=walltime)
-            else:
-                iter_time_dict = dict(iteration=global_step)
 
             for name, value in stats_dict.items():
                 stats_tfevents.add_scalar(name, value.mean, **iter_time_dict)
