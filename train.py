@@ -177,21 +177,20 @@ def launch_training(c, desc, outdir, dry_run):
     # Launch processes.
     if c.slurm:
         subprocess_fn(rank=rank, c=c, temp_dir=None)
+    elif c.num_gpus == 1:
+        subprocess_fn(rank=0, c=c, temp_dir=None)
     else:
         torch.multiprocessing.set_start_method('spawn')
         with tempfile.TemporaryDirectory() as temp_dir:
-            if c.num_gpus == 1:
-                subprocess_fn(rank=0, c=c, temp_dir=temp_dir)
-            else:
-                torch.multiprocessing.spawn(fn=subprocess_fn,
-                                            args=(c, temp_dir),
-                                            nprocs=c.num_gpus)
+            torch.multiprocessing.spawn(fn=subprocess_fn,
+                                        args=(c, temp_dir),
+                                        nprocs=c.num_gpus)
 
 
 # ---------------------------------------------------------------------------
 
 
-def init_dataset_kwargs(data=None, subset=None, slurm=False):
+def init_dataset_kwargs(data=None, subset=None, slurm=False, use_zip=False):
     try:
         class_parent = 'training.dataset.{}'
         class_name = 'ImageFolderDataset'
@@ -200,7 +199,7 @@ def init_dataset_kwargs(data=None, subset=None, slurm=False):
             kwargs = dict(path=data)
         elif subset is not None:
             class_name = class_parent.format('MM' + class_name)
-            kwargs = dict(name=subset, slurm=slurm)
+            kwargs = dict(name=subset, slurm=slurm, use_zip=use_zip)
         else:
             raise ValueError(
                 'data and name must not be None at the same time.')
@@ -213,8 +212,10 @@ def init_dataset_kwargs(data=None, subset=None, slurm=False):
 
         dataset_obj = dnnlib.util.construct_class_by_name(
             **dataset_kwargs)  # Subclass of training.dataset.Dataset.
-        dataset_kwargs.resolution = dataset_obj.resolution  # Be explicit about resolution.
-        dataset_kwargs.use_labels = dataset_obj.has_labels  # Be explicit about labels.
+        # Be explicit about resolution.
+        dataset_kwargs.resolution = dataset_obj.resolution
+        # Be explicit about labels.
+        dataset_kwargs.use_labels = dataset_obj.has_labels
         dataset_kwargs.max_size = len(
             dataset_obj)  # Be explicit about dataset size.
         return dataset_kwargs, dataset_obj.name
@@ -397,7 +398,14 @@ def parse_comma_separated_list(s):
               '--dry-run',
               help='Print training options and exit',
               is_flag=True)
-@click.option('--slurm', is_flag=True, help='Whether run code in slurm mode.')
+@click.option('--slurm',
+              is_flag=True,
+              default=False,
+              help='Whether run code in slurm mode.')
+@click.option('--use_zip',
+              is_flag=True,
+              default=False,
+              help='Whether run code in with zip loader.')
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper "Alias-Free
     Generative Adversarial Networks".
@@ -444,7 +452,10 @@ def main(**kwargs):
 
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(
-        data=opts.data, subset=opts.subset, slurm=opts.slurm)
+        data=opts.data,
+        subset=opts.subset,
+        slurm=opts.slurm,
+        use_zip=opts.use_zip)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException(
             '--cond=True requires labels specified in dataset.json')
@@ -491,11 +502,14 @@ def main(**kwargs):
     c.ema_kimg = c.batch_size * 10 / 32
     if opts.cfg == 'stylegan2':
         c.G_kwargs.class_name = 'training.networks_stylegan2.Generator'
-        c.loss_kwargs.style_mixing_prob = 0.9  # Enable style mixing regularization.
+        # Enable style mixing regularization.
+        c.loss_kwargs.style_mixing_prob = 0.9
         c.loss_kwargs.pl_weight = 2  # Enable path length regularization.
         c.G_reg_interval = 4  # Enable lazy regularization for G.
-        c.G_kwargs.fused_modconv_default = 'inference_only'  # Speed up training by using regular convolutions instead of grouped convolutions.
-        c.loss_kwargs.pl_no_weight_grad = True  # Speed up path length regularization by skipping gradient computation wrt. conv2d weights.
+        # Speed up training by using regular convolutions instead of grouped convolutions.
+        c.G_kwargs.fused_modconv_default = 'inference_only'
+        # Speed up path length regularization by skipping gradient computation wrt. conv2d weights.
+        c.loss_kwargs.pl_no_weight_grad = True
     else:
         c.G_kwargs.class_name = 'training.networks_stylegan3.Generator'
         c.G_kwargs.magnitude_ema_beta = 0.5**(c.batch_size / (20 * 1e3))
@@ -503,9 +517,12 @@ def main(**kwargs):
             c.G_kwargs.conv_kernel = 1  # Use 1x1 convolutions.
             c.G_kwargs.channel_base *= 2  # Double the number of feature maps.
             c.G_kwargs.channel_max *= 2
-            c.G_kwargs.use_radial_filters = True  # Use radially symmetric downsampling filters.
-            c.loss_kwargs.blur_init_sigma = 10  # Blur the images seen by the discriminator.
-            c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32  # Fade out the blur during the first N kimg.
+            # Use radially symmetric downsampling filters.
+            c.G_kwargs.use_radial_filters = True
+            # Blur the images seen by the discriminator.
+            c.loss_kwargs.blur_init_sigma = 10
+            # Fade out the blur during the first N kimg.
+            c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32
 
     # Augmentation.
     if opts.aug != 'noaug':

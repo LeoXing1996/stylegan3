@@ -330,11 +330,17 @@ def training_loop(
     batch_idx = 0
     if progress_fn is not None:
         progress_fn(0, total_kimg)
+
+    data_time_log = []
     while True:
 
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
+            s_t = time.time()
             phase_real_img, phase_real_c = next(training_set_iterator)
+            e_t = time.time()
+            data_time_log.append(e_t - s_t)
+
             phase_real_img = (
                 phase_real_img.to(device).to(torch.float32) / 127.5 -
                 1).split(batch_gpu)
@@ -452,6 +458,9 @@ def training_loop(
         ]
         fields += [
             f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"
+        ]
+        fields += [
+            f"data_time {training_stats.report0('Timing/data_time', data_time_log[-1]):6.4f}"
         ]
         fields += [
             f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"
@@ -593,6 +602,12 @@ def training_loop(
     if rank == 0:
         print()
         print('Exiting...')
+        with open(os.path.join(run_dir, 'timer.txt'), 'w') as file:
+            total_time = f'Total Time: {time.time() - start_time}\n'
+            data_time_np = np.array(data_time_log).mean()
+            data_time_ = f'Data Time:  {data_time_np:.5f}\n'
+            file.write(total_time)
+            file.write(data_time_)
 
 
 # ---------------------------------------------------------------------------

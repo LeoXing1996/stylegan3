@@ -32,9 +32,9 @@ class Dataset(torch.utils.data.Dataset):
             self,
             name,  # Name of the dataset.
             raw_shape,  # Shape of the raw image data (NCHW).
-            max_size=None,  # Artificially limit the size of the dataset. None = no limit. Applied before xflip.
-            use_labels=False,  # Enable conditioning labels? False = label dimension is zero.
-            xflip=False,  # Artificially double the size of the dataset via x-flips. Applied after max_size.
+            max_size=None,  # Artificially limit the size of the dataset. None = no limit. Applied before xflip.  # noqa
+            use_labels=False,  # Enable conditioning labels? False = label dimension is zero.  # noqa
+            xflip=False,  # Artificially double the size of the dataset via x-flips. Applied after max_size.  # noqa
             random_seed=0,  # Random seed to use when applying max_size.
     ):
         self._name = name
@@ -195,8 +195,12 @@ class ImageFolderDataset(Dataset):
 
         name_path = self._path[:-1] if self._path.endswith('/') else self._path
         name = os.path.splitext(os.path.basename(name_path))[0]
-        raw_shape = [len(self._image_fnames)] + list(
-            self._load_raw_image(0).shape)
+        if resolution is not None:
+            raw_shape = [len(self._image_fnames)] + [3, resolution, resolution]
+        else:
+            raw_shape = [len(self._image_fnames)] + list(
+                self._load_raw_image(0).shape)
+
         if resolution is not None and (raw_shape[2] != resolution
                                        or raw_shape[3] != resolution):
             raise IOError('Image files do not match the specified resolution')
@@ -307,7 +311,7 @@ class CenterCropLongEdge:
 class MMImageFolderDataset(ImageFolderDataset):
 
     _handler_cfg = dict(
-        car={
+        car256={
             'path': './data/lsun-car/',
             'slurm': {
                 'backend': 'petrel',
@@ -317,11 +321,35 @@ class MMImageFolderDataset(ImageFolderDataset):
                 },
                 'enable_mc': True,
             },
+            'zip': {
+                'backend': 'zip',
+                'zip_path': './data/car256.zip',
+                'res': 256
+            },
             'non_slurm': {
                 'backend': 'disk'
             }
         },
-        ffhq={
+        afhq256={
+            'path': '',
+            'slurm': {
+                'backend': 'petrel',
+                'path_mapping': {
+                    './data/afhq/':
+                    'openmmlab:s3://openmmlab/datasets/editing/afhq/'
+                },
+                'enable_mc': True
+            },
+            'zip': {
+                'backend': 'zip',
+                'zip_path': './data/afhq256.zip',
+                'res': 256
+            },
+            'non_slurm': {
+                'backend': 'disk'
+            }
+        },
+        ffhq256={
             'path': './data/ffhq256/',
             'slurm': {
                 'backend': 'petrel',
@@ -331,17 +359,36 @@ class MMImageFolderDataset(ImageFolderDataset):
                 },
                 'enable_mc': True
             },
+            'zip': {
+                'backend': 'zip',
+                'zip_path': './data/ffhq256.zip',
+                'res': 256
+            },
             'non_slurm': {
                 'backend': 'disk'
             }
         })
 
-    def __init__(self, name, resolution=None, slurm=False, **super_kwargs):
+    def __init__(self,
+                 name,
+                 resolution=None,
+                 slurm=False,
+                 use_zip=False,
+                 **super_kwargs):
         handler_cfg = self._handler_cfg[name]
         path = handler_cfg['path']
 
         self.is_slurm = slurm
-        if self.is_slurm:
+        self.use_zip = use_zip
+
+        if self.use_zip:
+            # zip is prior than slurm
+            self.file_client_cfg = handler_cfg['zip']
+            path = handler_cfg['zip']['zip_path']
+            # zip backend need pre-defined resolution, because we cannot call
+            # `self._load_raw_image` in `__init__`
+            resolution = self.file_client_cfg.pop('res')
+        elif self.is_slurm:
             self.file_client_cfg = handler_cfg['slurm']
         else:
             self.file_client_cfg = handler_cfg['non_slurm']
@@ -358,9 +405,16 @@ class MMImageFolderDataset(ImageFolderDataset):
         img = img.resize((width, height), PIL.Image.LANCZOS)
         return np.array(img)
 
+    @staticmethod
+    def center_crop_width(width, height, img):
+        # NOTE: refer to lsun-wide preprocession in stylegan2
+        # TODO:
+        pass
+
     def _load_raw_image(self, raw_idx):
         fname = self._image_fnames[raw_idx]
-        fname = os.path.join(self._path, fname)
+        if not self.use_zip:
+            fname = os.path.join(self._path, fname)
         if self.file_client is None:
             self.file_client = FileClient(**self.file_client_cfg)
         image_bytes = self.file_client.get(fname)
