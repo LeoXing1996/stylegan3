@@ -10,6 +10,7 @@
 import json
 import os
 import zipfile
+from copy import deepcopy
 
 import mmcv
 import numpy as np
@@ -375,7 +376,7 @@ class MMImageFolderDataset(ImageFolderDataset):
                  slurm=False,
                  use_zip=False,
                  **super_kwargs):
-        handler_cfg = self._handler_cfg[name]
+        handler_cfg = deepcopy(self._handler_cfg[name])
         path = handler_cfg['path']
 
         self.is_slurm = slurm
