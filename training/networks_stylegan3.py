@@ -12,9 +12,13 @@ import numpy as np
 import scipy.optimize
 import scipy.signal
 import torch
+from torch import distributed
 
 from torch_utils import misc, persistence
 from torch_utils.ops import bias_act, conv2d_gradfix, filtered_lrelu
+
+from .nerf_generator import BoundingBoxGenerator, Decoder
+from .nerf_generator import Generator as NeRF
 
 # ----------------------------------------------------------------------------
 
@@ -121,19 +125,14 @@ class FullyConnectedLayer(torch.nn.Module):
 @persistence.persistent_class
 class MappingNetwork(torch.nn.Module):
     def __init__(
-        self,
-        z_dim,  # Input latent (Z) dimensionality.
-        # Conditioning label (C) dimensionality, 0 = no labels.
-        c_dim,
-        # Intermediate latent (W) dimensionality.
-        w_dim,
-        # Number of intermediate latents to output.
-        num_ws,
-        num_layers=2,  # Number of mapping layers.
-        # Learning rate multiplier for the mapping layers.
-        lr_multiplier=0.01,
-        # Decay for tracking the moving average of W during training.
-        w_avg_beta=0.998,
+            self,
+            z_dim,  # Input latent (Z) dimensionality.
+            c_dim,  # Conditioning label (C) dimensionality, 0 = no labels.
+            w_dim,  # Intermediate latent (W) dimensionality.
+            num_ws,  # Number of intermediate latents to output.
+            num_layers=2,  # Number of mapping layers.
+            lr_multiplier=0.01,  # Learning rate multiplier for the mapping layers.
+            w_avg_beta=0.998,  # Decay for tracking the moving average of W during training.  # noqa
     ):
         super().__init__()
         self.z_dim = z_dim
@@ -237,6 +236,10 @@ class SynthesisInput(torch.nn.Module):
 
     def forward(self, w):
         # Introduce batch dimension.
+        # import ipdb
+        # ipdb.set_trace()
+        # print(f'Input W: [{w.shape}]')
+
         transforms = self.transform.unsqueeze(0)  # [batch, row, col]
         freqs = self.freqs.unsqueeze(0)  # [batch, channel, xy]
         phases = self.phases.unsqueeze(0)  # [batch, channel]
@@ -276,10 +279,9 @@ class SynthesisInput(torch.nn.Module):
             theta.unsqueeze(0), [1, 1, self.size[1], self.size[0]],
             align_corners=False)
 
-        # Compute Fourier features.
+        # Compute Fourier features. -> [batch, height, width, channel]
         x = (grids.unsqueeze(3) @ freqs.permute(
-            0, 2, 1).unsqueeze(1).unsqueeze(2)).squeeze(
-                3)  # [batch, height, width, channel]
+            0, 2, 1).unsqueeze(1).unsqueeze(2)).squeeze(3)
         x = x + phases.unsqueeze(1).unsqueeze(2)
         x = torch.sin(x * (np.pi * 2))
         x = x * amplitudes.unsqueeze(1).unsqueeze(2)
@@ -295,6 +297,7 @@ class SynthesisInput(torch.nn.Module):
             [w.shape[0], self.channels,
              int(self.size[1]),
              int(self.size[0])])
+        # ipdb.set_trace()
         return x
 
     def extra_repr(self):
@@ -536,32 +539,23 @@ class SynthesisLayer(torch.nn.Module):
 @persistence.persistent_class
 class SynthesisNetwork(torch.nn.Module):
     def __init__(
-        self,
-        # Intermediate latent (W) dimensionality.
-        w_dim,
-        img_resolution,  # Output image resolution.
-        img_channels,  # Number of color channels.
-        # Overall multiplier for the number of channels.
-        channel_base=32768,
-        # Maximum number of channels in any layer.
-        channel_max=512,
-        # Total number of layers, excluding Fourier features and ToRGB.
-        num_layers=14,
-        # Number of critically sampled layers at the end.
-        num_critical=2,
-        # Cutoff frequency of the first layer (f_{c,0}).
-        first_cutoff=2,
-        # Minimum stopband of the first layer (f_{t,0}).
-        first_stopband=2**2.1,
-        # Minimum stopband of the last layer, expressed relative to the cutoff.
-        last_stopband_rel=2**0.3,
-        # Number of additional pixels outside the image.
-        margin_size=10,
-        output_scale=0.25,  # Scale factor for the output image.
-        # Use FP16 for the N highest resolutions.
-        num_fp16_res=4,
-        # Arguments for SynthesisLayer.
-        **layer_kwargs,
+            self,
+            w_dim,  # Intermediate latent (W) dimensionality.
+            img_resolution,  # Output image resolution.
+            img_channels,  # Number of color channels.
+            channel_base=32768,  # Overall multiplier for the number of channels.
+            channel_max=512,  # Maximum number of channels in any layer.
+            num_layers=14,  # Total number of layers, excluding Fourier features and ToRGB.  # noqa
+            num_critical=2,  # Number of critically sampled layers at the end.
+            first_cutoff=2,  # Cutoff frequency of the first layer (f_{c,0}).
+            first_stopband=2**\
+        2.1,  # Minimum stopband of the first layer (f_{t,0}).  # noqa
+            last_stopband_rel=2**\
+        0.3,  # Minimum stopband of the last layer, expressed relative to the cutoff.  # noqa
+            margin_size=10,  # Number of additional pixels outside the image.
+            output_scale=0.25,  # Scale factor for the output image.
+            num_fp16_res=4,  # Use FP16 for the N highest resolutions.
+            **layer_kwargs,  # Arguments for SynthesisLayer.
     ):
         super().__init__()
         self.w_dim = w_dim
@@ -630,12 +624,18 @@ class SynthesisNetwork(torch.nn.Module):
             setattr(self, name, layer)
             self.layer_names.append(name)
 
-    def forward(self, ws, **layer_kwargs):
+    def forward(self, ws, nerf_feat=None, **layer_kwargs):
         misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
         ws = ws.to(torch.float32).unbind(dim=1)
 
+        # import ipdb
         # Execute layers.
-        x = self.input(ws[0])
+        if nerf_feat is not None:
+            x = nerf_feat
+        else:
+            # simply ignore ws[0] at the input
+            x = self.input(ws[0])
+        # ipdb.set_trace()
         for name, w in zip(self.layer_names, ws[1:]):
             x = getattr(self, name)(x, w, **layer_kwargs)
         if self.output_scale != 1:
@@ -706,3 +706,93 @@ class Generator(torch.nn.Module):
 
 
 # ----------------------------------------------------------------------------
+
+
+@persistence.persistent_class
+class Generator_with_NeRF(torch.nn.Module):
+    def __init__(
+            self,
+            z_dim,  # Input latent (Z) dimensionality.
+            c_dim,  # Conditioning label (C) dimensionality.
+            w_dim,  # Intermediate latent (W) dimensionality.
+            n_dim,  # Latent dim in nerf
+            n_dim_bg,  # latent dim for background in nerf
+            img_resolution,  # Output resolution.
+            img_channels,  # Number of output color channels.
+            mapping_kwargs={},  # Arguments for MappingNetwork.
+            nerf_kwargs={},  # Arguments for nerf rendering process.
+            bbox_kwargs={},  # Arguments for bbox generator.
+            decoder_kwargs={},  # Arguments for nerf decoder.
+            bg_decoder_kwargs={},  # Arguments for bg nerf decoder.
+            **synthesis_kwargs,  # Arguments for SynthesisNetwork.
+    ):
+        super().__init__()
+        self.z_dim = z_dim
+        self.c_dim = c_dim
+        self.w_dim = w_dim
+        self.img_resolution = img_resolution
+        self.img_channels = img_channels
+        self.synthesis = SynthesisNetwork(w_dim=w_dim,
+                                          img_resolution=img_resolution,
+                                          img_channels=img_channels,
+                                          **synthesis_kwargs)
+        self.num_ws = self.synthesis.num_ws
+        self.mapping = MappingNetwork(z_dim=z_dim,
+                                      c_dim=c_dim,
+                                      w_dim=w_dim,
+                                      num_ws=self.num_ws,
+                                      **mapping_kwargs)
+
+        # overwrite nerf configs
+        nerf_res = int(self.synthesis.layer_names[0].split('_')[1])
+        nerf_kwargs['resolution_vol'] = nerf_res
+
+        # this may correct all the time, but seems input channels equals to
+        # the output channels in the first layer.
+        input_channels = int(self.synthesis.layer_names[0].split('_')[2])
+        decoder_kwargs['rgb_out_dim'] = input_channels
+        bg_decoder_kwargs['rgb_out_dim'] = input_channels
+        self.nerf = self.build_nerf(n_dim, n_dim_bg, decoder_kwargs,
+                                    bg_decoder_kwargs, bbox_kwargs,
+                                    nerf_kwargs)
+
+    def build_nerf(self, n_dim, n_dim_bg, decoder_kwargs, bg_decoder_kwargs,
+                   bbox_kwargs, nerf_kwargs):
+        rank = distributed.get_rank() \
+            if distributed.is_initialized() else 0
+        device = torch.device('cuda', rank)
+
+        decoder = Decoder(z_dim=n_dim, **decoder_kwargs)
+        bg_decoder = Decoder(**bg_decoder_kwargs)
+        bbox_generator = BoundingBoxGenerator(**bbox_kwargs)
+        nerf = NeRF(device,
+                    z_dim=n_dim,
+                    z_dim_bg=n_dim_bg,
+                    decoder=decoder,
+                    background_generator=bg_decoder,
+                    bounding_box_generator=bbox_generator,
+                    **nerf_kwargs)
+        return nerf
+
+    def forward(self,
+                z,
+                c,
+                truncation_psi=1,
+                truncation_cutoff=None,
+                update_emas=False,
+                **synthesis_kwargs):
+        ws = self.mapping(z,
+                          c,
+                          truncation_psi=truncation_psi,
+                          truncation_cutoff=truncation_cutoff,
+                          update_emas=update_emas)
+        # import ipdb
+        # ipdb.set_trace()
+        batch_size = ws.shape[0]
+        nerf_feature = self.nerf(batch_size=batch_size)
+        # ipdb.set_trace()
+        img = self.synthesis(ws,
+                             nerf_feat=nerf_feature,
+                             update_emas=update_emas,
+                             **synthesis_kwargs)
+        return img

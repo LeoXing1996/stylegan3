@@ -406,6 +406,10 @@ def parse_comma_separated_list(s):
               is_flag=True,
               default=False,
               help='Whether run code in with zip loader.')
+@click.option('--nerf_config',
+              is_flag=False,
+              default=None,
+              help='The config for nerf generator.')
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper "Alias-Free
     Generative Adversarial Networks".
@@ -523,6 +527,40 @@ def main(**kwargs):
             c.loss_kwargs.blur_init_sigma = 10
             # Fade out the blur during the first N kimg.
             c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32
+        if opts.nerf_config is not None:
+            import yaml
+            with open(opts.nerf_config, 'r') as f:
+                cfg_special = yaml.load(f, Loader=yaml.Loader)
+            # NOTE: overwrite the class name
+            c.G_kwargs.class_name = 'training.networks_stylegan3.Generator_with_NeRF'
+            # Use radially symmetric downsampling filters.
+            c.G_kwargs.use_radial_filters = True
+            # Blur the images seen by the discriminator.
+            c.loss_kwargs.blur_init_sigma = 10
+            # Fade out the blur during the first N kimg.
+            c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32
+
+            c.G_kwargs.n_dim = 128
+            c.G_kwargs.n_dim_bg = 128
+
+            # import ipdb
+            # ipdb.set_trace()
+            # NOTE: add nerf's config
+            nerf_kwargs = dnnlib.EasyDict()
+            c.G_kwargs.nerf_kwargs = cfg_special.get('nerf_kwargs',
+                                                     nerf_kwargs)
+
+            decoder_kwargs = dnnlib.EasyDict()
+            c.G_kwargs.decoder_kwargs = cfg_special.get(
+                'decoder_kwargs', decoder_kwargs)
+
+            bg_decoder_kwargs = dnnlib.EasyDict()
+            c.G_kwargs.bg_decoder_kwargs = cfg_special.get(
+                'bg_decoder_kwargs', bg_decoder_kwargs)
+
+            bbox_kwargs = dnnlib.EasyDict()
+            c.G_kwargs.bbox_kwargs = cfg_special.get('bbox_kwargs',
+                                                     bbox_kwargs)
 
     # Augmentation.
     if opts.aug != 'noaug':
