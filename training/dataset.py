@@ -168,7 +168,7 @@ class ImageFolderDataset(Dataset):
     def __init__(
             self,
             path,  # Path to directory or zip.
-            resolution=None,  # Ensure specific resolution, None = highest available.
+            resolution=None,  # Ensure specific resolution, None = highest available.  # noqa
             **super_kwargs,  # Additional arguments for the Dataset base class.
     ):
         self._path = path
@@ -318,7 +318,7 @@ class MMImageFolderDataset(ImageFolderDataset):
                 'backend': 'petrel',
                 'path_mapping': {
                     './data/lsun-car/':
-                    'openmmlab:s3://openmmlab/datasets/editing/lsun/images/car/'
+                    'openmmlab:s3://openmmlab/datasets/editing/lsun/images/car/'  # noqa
                 },
                 'enable_mc': True,
             },
@@ -356,7 +356,7 @@ class MMImageFolderDataset(ImageFolderDataset):
                 'backend': 'petrel',
                 'path_mapping': {
                     './data/ffhq256/':
-                    'openmmlab:s3://openmmlab/datasets/editing/ffhq/ffhq_imgs/ffhq_256/'
+                    'openmmlab:s3://openmmlab/datasets/editing/ffhq/ffhq_imgs/ffhq_256/'  # noqa
                 },
                 'enable_mc': True
             },
