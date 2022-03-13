@@ -72,7 +72,7 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 # ---------------------------------------------------------------------------
 
 
-def save_image_grid(img, fname, drange, grid_size):
+def save_image_grid(img, fname, drange, grid_size, slurm=False):
     lo, hi = drange
     img = np.asarray(img, dtype=np.float32)
     img = (img - lo) * (255 / (hi - lo))
@@ -89,6 +89,8 @@ def save_image_grid(img, fname, drange, grid_size):
         PIL.Image.fromarray(img[:, :, 0], 'L').save(fname)
     if C == 3:
         PIL.Image.fromarray(img, 'RGB').save(fname)
+    if slurm:  # TODO: to ceph
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -532,6 +534,8 @@ def training_loop(
             if rank == 0:
                 with open(snapshot_pkl, 'wb') as f:
                     pickle.dump(snapshot_data, f)
+                if slurm:  # TODO: write to slurm
+                    pass
 
         # Evaluate metrics.
         if (snapshot_data is not None) and (len(metrics) > 0):

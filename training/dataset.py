@@ -272,6 +272,7 @@ class CenterCropLongEdge:
     Args:
         keys (list[str]): The images to be cropped.
     """
+
     def __init__(self, keys):
         assert keys, 'Keys should not be empty.'
         self.keys = keys
@@ -330,6 +331,16 @@ class MMImageFolderDataset(ImageFolderDataset):
             'non_slurm': {
                 'backend': 'disk'
             }
+        },
+        cmp_car256={
+            'path': './data/comperhensive_car/',
+            'slurm': {},
+            'zip': {
+                'backend': 'zip',
+                'zip_path': './data/comp_car256.zip',
+                'res': 256
+            },
+            'non_slurm': {'backend': 'zip'}
         },
         afhq256={
             'path': '',

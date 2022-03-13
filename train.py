@@ -418,18 +418,18 @@ def main(**kwargs):
 
     \b
     # Train StyleGAN3-T for AFHQv2 using 8 GPUs.
-    python train.py --outdir=~/training-runs --cfg=stylegan3-t --data=~/datasets/afhqv2-512x512.zip \\
+    python train.py --outdir=~/training-runs --cfg=stylegan3-t --data=~/datasets/afhqv2-512x512.zip \\  # noqa
         --gpus=8 --batch=32 --gamma=8.2 --mirror=1
 
     \b
-    # Fine-tune StyleGAN3-R for MetFaces-U using 1 GPU, starting from the pre-trained FFHQ-U pickle.
-    python train.py --outdir=~/training-runs --cfg=stylegan3-r --data=~/datasets/metfacesu-1024x1024.zip \\
+    # Fine-tune StyleGAN3-R for MetFaces-U using 1 GPU, starting from the pre-trained FFHQ-U pickle.  # noqa
+    python train.py --outdir=~/training-runs --cfg=stylegan3-r --data=~/datasets/metfacesu-1024x1024.zip \\  # noqa
         --gpus=8 --batch=32 --gamma=6.6 --mirror=1 --kimg=5000 --snap=5 \\
-        --resume=https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/stylegan3-r-ffhqu-1024x1024.pkl
+        --resume=https://api.ngc.nvidia.com/v2/models/nvidia/research/stylegan3/versions/1/files/stylegan3-r-ffhqu-1024x1024.pkl  # noqa
 
     \b
     # Train StyleGAN2 for FFHQ at 1024x1024 resolution using 8 GPUs.
-    python train.py --outdir=~/training-runs --cfg=stylegan2 --data=~/datasets/ffhq-1024x1024.zip \\
+    python train.py --outdir=~/training-runs --cfg=stylegan2 --data=~/datasets/ffhq-1024x1024.zip \\  # noqa
         --gpus=8 --batch=32 --gamma=10 --mirror=1 --aug=noaug
     """
 
@@ -510,9 +510,9 @@ def main(**kwargs):
         c.loss_kwargs.style_mixing_prob = 0.9
         c.loss_kwargs.pl_weight = 2  # Enable path length regularization.
         c.G_reg_interval = 4  # Enable lazy regularization for G.
-        # Speed up training by using regular convolutions instead of grouped convolutions.
+        # Speed up training by using regular convolutions instead of grouped convolutions.  # noqa
         c.G_kwargs.fused_modconv_default = 'inference_only'
-        # Speed up path length regularization by skipping gradient computation wrt. conv2d weights.
+        # Speed up path length regularization by skipping gradient computation wrt. conv2d weights.  # noqa
         c.loss_kwargs.pl_no_weight_grad = True
     else:
         c.G_kwargs.class_name = 'training.networks_stylegan3.Generator'
@@ -532,19 +532,8 @@ def main(**kwargs):
             with open(opts.nerf_config, 'r') as f:
                 cfg_special = yaml.load(f, Loader=yaml.Loader)
             # NOTE: overwrite the class name
-            c.G_kwargs.class_name = 'training.networks_stylegan3.Generator_with_NeRF'
-            # Use radially symmetric downsampling filters.
-            c.G_kwargs.use_radial_filters = True
-            # Blur the images seen by the discriminator.
-            c.loss_kwargs.blur_init_sigma = 10
-            # Fade out the blur during the first N kimg.
-            c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32
-
-            c.G_kwargs.n_dim = 128
-            c.G_kwargs.n_dim_bg = 128
-
-            # import ipdb
-            # ipdb.set_trace()
+            c.G_kwargs.class_name = ('training.networks_stylegan3.'
+                                     'Generator_with_NeRF')
             # NOTE: add nerf's config
             nerf_kwargs = dnnlib.EasyDict()
             c.G_kwargs.nerf_kwargs = cfg_special.get('nerf_kwargs',
@@ -601,7 +590,11 @@ def main(**kwargs):
     c.slurm = opts.slurm
 
     # Description string.
-    desc = f'{opts.cfg:s}-{dataset_name:s}-gpus{c.num_gpus:d}-batch{c.batch_size:d}-gamma{c.loss_kwargs.r1_gamma:g}'
+    desc = (f'{opts.cfg:s}-{dataset_name:s}-gpus{c.num_gpus:d}-'
+            f'batch{c.batch_size:d}-gamma{c.loss_kwargs.r1_gamma:g}')
+    if opts.nerf_config is not None:
+        nerf_config_name = os.path.basename(opts.nerf_config)
+        desc += f'-nerf_cfg-{nerf_config_name}'
     if opts.desc is not None:
         desc += f'-{opts.desc}'
 

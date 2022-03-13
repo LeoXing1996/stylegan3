@@ -131,7 +131,8 @@ class MappingNetwork(torch.nn.Module):
             w_dim,  # Intermediate latent (W) dimensionality.
             num_ws,  # Number of intermediate latents to output.
             num_layers=2,  # Number of mapping layers.
-            lr_multiplier=0.01,  # Learning rate multiplier for the mapping layers.
+            # Learning rate multiplier for the mapping layers.
+            lr_multiplier=0.01,
             w_avg_beta=0.998,  # Decay for tracking the moving average of W during training.  # noqa
     ):
         super().__init__()
@@ -543,14 +544,15 @@ class SynthesisNetwork(torch.nn.Module):
             w_dim,  # Intermediate latent (W) dimensionality.
             img_resolution,  # Output image resolution.
             img_channels,  # Number of color channels.
-            channel_base=32768,  # Overall multiplier for the number of channels.
+            # Overall multiplier for the number of channels.
+            channel_base=32768,
             channel_max=512,  # Maximum number of channels in any layer.
             num_layers=14,  # Total number of layers, excluding Fourier features and ToRGB.  # noqa
             num_critical=2,  # Number of critically sampled layers at the end.
             first_cutoff=2,  # Cutoff frequency of the first layer (f_{c,0}).
-            first_stopband=2**\
+            first_stopband=2 **\
         2.1,  # Minimum stopband of the first layer (f_{t,0}).  # noqa
-            last_stopband_rel=2**\
+            last_stopband_rel=2 **\
         0.3,  # Minimum stopband of the last layer, expressed relative to the cutoff.  # noqa
             margin_size=10,  # Number of additional pixels outside the image.
             output_scale=0.25,  # Scale factor for the output image.
@@ -715,8 +717,8 @@ class Generator_with_NeRF(torch.nn.Module):
             z_dim,  # Input latent (Z) dimensionality.
             c_dim,  # Conditioning label (C) dimensionality.
             w_dim,  # Intermediate latent (W) dimensionality.
-            n_dim,  # Latent dim in nerf
-            n_dim_bg,  # latent dim for background in nerf
+            # n_dim,  # Latent dim in nerf
+            # n_dim_bg,  # latent dim for background in nerf
             img_resolution,  # Output resolution.
             img_channels,  # Number of output color channels.
             mapping_kwargs={},  # Arguments for MappingNetwork.
@@ -752,9 +754,11 @@ class Generator_with_NeRF(torch.nn.Module):
         input_channels = int(self.synthesis.layer_names[0].split('_')[2])
         decoder_kwargs['rgb_out_dim'] = input_channels
         bg_decoder_kwargs['rgb_out_dim'] = input_channels
-        self.nerf = self.build_nerf(n_dim, n_dim_bg, decoder_kwargs,
-                                    bg_decoder_kwargs, bbox_kwargs,
-                                    nerf_kwargs)
+        # self.nerf = self.build_nerf(n_dim, n_dim_bg, decoder_kwargs,
+        #                             bg_decoder_kwargs, bbox_kwargs,
+        #                             nerf_kwargs)
+        self.nerf = self.build_nerf_new(decoder_kwargs, bg_decoder_kwargs,
+                                        bbox_kwargs, nerf_kwargs)
 
     def build_nerf(self, n_dim, n_dim_bg, decoder_kwargs, bg_decoder_kwargs,
                    bbox_kwargs, nerf_kwargs):
@@ -768,6 +772,26 @@ class Generator_with_NeRF(torch.nn.Module):
         nerf = NeRF(device,
                     z_dim=n_dim,
                     z_dim_bg=n_dim_bg,
+                    decoder=decoder,
+                    background_generator=bg_decoder,
+                    bounding_box_generator=bbox_generator,
+                    **nerf_kwargs)
+        return nerf
+
+    def build_nerf_new(self, decoder_kwargs, bg_decoder_kwargs,
+                       bbox_kwargs, nerf_kwargs):
+        rank = distributed.get_rank() \
+            if distributed.is_initialized() else 0
+        device = torch.device('cuda', rank)
+
+        decoder = Decoder(**decoder_kwargs)
+        bg_decoder = Decoder(**bg_decoder_kwargs)
+        bbox_generator = BoundingBoxGenerator(**bbox_kwargs)
+        z_dim = decoder.z_dim
+        z_dim_bg = bg_decoder.z_dim
+        nerf = NeRF(device,
+                    z_dim=z_dim,
+                    z_dim_bg=z_dim_bg,
                     decoder=decoder,
                     background_generator=bg_decoder,
                     bounding_box_generator=bbox_generator,

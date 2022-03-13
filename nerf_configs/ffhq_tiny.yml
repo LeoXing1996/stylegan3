@@ -1,0 +1,19 @@
+nerf_kwargs:
+  range_v: [0.4167, 0.5]
+  fov: 10
+decoder_kwargs:
+  z_dim: 64
+  hidden_size: 64
+  n_blocks: 4
+bg_decoder_kwargs:
+  z_dim: 64
+  hidden_size: 64
+  n_blocks: 2
+  downscale_p_by: 12
+  skips: []
+bbox_kwargs:
+  scale_range_min: [0.21, 0.21, 0.21]
+  scale_range_max: [0.21, 0.21, 0.21]
+  translation_range_min: [0., 0., 0.]
+  translation_range_max: [0., 0., 0.]
+  rotation_range: [0.40278, 0.59722]
