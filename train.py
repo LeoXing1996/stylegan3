@@ -551,6 +551,10 @@ def main(**kwargs):
             c.G_kwargs.bbox_kwargs = cfg_special.get('bbox_kwargs',
                                                      bbox_kwargs)
 
+            nerf_resume_kwargs = dnnlib.EasyDict()
+            c.G_kwargs.nerf_resume_kwargs = cfg_special.get(
+                'resume_kwargs', nerf_resume_kwargs)
+
     # Augmentation.
     if opts.aug != 'noaug':
         c.augment_kwargs = dnnlib.EasyDict(

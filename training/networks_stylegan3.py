@@ -726,6 +726,7 @@ class Generator_with_NeRF(torch.nn.Module):
             bbox_kwargs={},  # Arguments for bbox generator.
             decoder_kwargs={},  # Arguments for nerf decoder.
             bg_decoder_kwargs={},  # Arguments for bg nerf decoder.
+            nerf_resume_kwargs={},  # use a pretrained nerf encoder
             **synthesis_kwargs,  # Arguments for SynthesisNetwork.
     ):
         super().__init__()
@@ -754,32 +755,12 @@ class Generator_with_NeRF(torch.nn.Module):
         input_channels = int(self.synthesis.layer_names[0].split('_')[2])
         decoder_kwargs['rgb_out_dim'] = input_channels
         bg_decoder_kwargs['rgb_out_dim'] = input_channels
-        # self.nerf = self.build_nerf(n_dim, n_dim_bg, decoder_kwargs,
-        #                             bg_decoder_kwargs, bbox_kwargs,
-        #                             nerf_kwargs)
         self.nerf = self.build_nerf_new(decoder_kwargs, bg_decoder_kwargs,
-                                        bbox_kwargs, nerf_kwargs)
-
-    def build_nerf(self, n_dim, n_dim_bg, decoder_kwargs, bg_decoder_kwargs,
-                   bbox_kwargs, nerf_kwargs):
-        rank = distributed.get_rank() \
-            if distributed.is_initialized() else 0
-        device = torch.device('cuda', rank)
-
-        decoder = Decoder(z_dim=n_dim, **decoder_kwargs)
-        bg_decoder = Decoder(**bg_decoder_kwargs)
-        bbox_generator = BoundingBoxGenerator(**bbox_kwargs)
-        nerf = NeRF(device,
-                    z_dim=n_dim,
-                    z_dim_bg=n_dim_bg,
-                    decoder=decoder,
-                    background_generator=bg_decoder,
-                    bounding_box_generator=bbox_generator,
-                    **nerf_kwargs)
-        return nerf
+                                        bbox_kwargs, nerf_kwargs,
+                                        nerf_resume_kwargs)
 
     def build_nerf_new(self, decoder_kwargs, bg_decoder_kwargs,
-                       bbox_kwargs, nerf_kwargs):
+                       bbox_kwargs, nerf_kwargs, resume_kwargs):
         rank = distributed.get_rank() \
             if distributed.is_initialized() else 0
         device = torch.device('cuda', rank)
@@ -796,6 +777,23 @@ class Generator_with_NeRF(torch.nn.Module):
                     background_generator=bg_decoder,
                     bounding_box_generator=bbox_generator,
                     **nerf_kwargs)
+
+        if resume_kwargs:
+            nerf_pretrain = torch.load(resume_kwargs['path'])['model']
+            # filter state dict
+            target_state_dict = dict()
+            for k, v in nerf_pretrain.items():
+                if (('generator_test' in k) and ('neural_renderer' not in k)
+                        and ('out' not in k)):
+                    new_k = '.'.join(k.split('.')[1:])
+                    target_state_dict[new_k] = v
+
+            # the last output layer may not match
+            nerf.load_state_dict(target_state_dict, strict=False)
+            if nerf_pretrain.get('freeze', False):
+                for p in nerf.parameters():
+                    p.requires_grad_(False)
+
         return nerf
 
     def forward(self,
@@ -810,11 +808,8 @@ class Generator_with_NeRF(torch.nn.Module):
                           truncation_psi=truncation_psi,
                           truncation_cutoff=truncation_cutoff,
                           update_emas=update_emas)
-        # import ipdb
-        # ipdb.set_trace()
         batch_size = ws.shape[0]
         nerf_feature = self.nerf(batch_size=batch_size)
-        # ipdb.set_trace()
         img = self.synthesis(ws,
                              nerf_feat=nerf_feature,
                              update_emas=update_emas,

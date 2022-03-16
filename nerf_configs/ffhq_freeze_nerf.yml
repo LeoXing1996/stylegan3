@@ -1,0 +1,17 @@
+nerf_kwargs:
+  range_v: [0.4167, 0.5]
+  fov: 10
+bg_decoder_kwargs:
+  hidden_size: 64
+  n_blocks: 4
+  downscale_p_by: 12
+  skips: []
+bbox_kwargs:
+  scale_range_min: [0.21, 0.21, 0.21]
+  scale_range_max: [0.21, 0.21, 0.21]
+  translation_range_min: [0., 0., 0.]
+  translation_range_max: [0., 0., 0.]
+  rotation_range: [0.40278, 0.59722]
+resume_kwargs:
+  path: "./nerf-pretrain/giraffe-ffhq256-pretrain.pt"
+  freeze: true
