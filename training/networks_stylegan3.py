@@ -755,12 +755,12 @@ class Generator_with_NeRF(torch.nn.Module):
         input_channels = int(self.synthesis.layer_names[0].split('_')[2])
         decoder_kwargs['rgb_out_dim'] = input_channels
         bg_decoder_kwargs['rgb_out_dim'] = input_channels
-        self.nerf = self.build_nerf_new(decoder_kwargs, bg_decoder_kwargs,
-                                        bbox_kwargs, nerf_kwargs,
-                                        nerf_resume_kwargs)
+        self.nerf = self.build_nerf(decoder_kwargs, bg_decoder_kwargs,
+                                    bbox_kwargs, nerf_kwargs,
+                                    nerf_resume_kwargs)
 
-    def build_nerf_new(self, decoder_kwargs, bg_decoder_kwargs,
-                       bbox_kwargs, nerf_kwargs, resume_kwargs):
+    def build_nerf(self, decoder_kwargs, bg_decoder_kwargs,
+                   bbox_kwargs, nerf_kwargs, resume_kwargs):
         rank = distributed.get_rank() \
             if distributed.is_initialized() else 0
         device = torch.device('cuda', rank)
