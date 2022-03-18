@@ -13,6 +13,7 @@ import scipy.optimize
 import scipy.signal
 import torch
 from torch import distributed
+import torch.nn.functional as F
 
 from torch_utils import misc, persistence
 from torch_utils.ops import bias_act, conv2d_gradfix, filtered_lrelu
@@ -790,9 +791,12 @@ class Generator_with_NeRF(torch.nn.Module):
 
             # the last output layer may not match
             nerf.load_state_dict(target_state_dict, strict=False)
-            if nerf_pretrain.get('freeze', False):
-                for p in nerf.parameters():
-                    p.requires_grad_(False)
+            if nerf_pretrain.get('freeze', True):
+                for n, p in nerf.named_parameters():
+                    if 'out' not in n:
+                        p.requires_grad_(False)
+                    else:
+                        print(f'Learn {n}.')
 
         return nerf
 
@@ -802,6 +806,7 @@ class Generator_with_NeRF(torch.nn.Module):
                 truncation_psi=1,
                 truncation_cutoff=None,
                 update_emas=False,
+                return_nerf=False,
                 **synthesis_kwargs):
         ws = self.mapping(z,
                           c,
@@ -814,4 +819,13 @@ class Generator_with_NeRF(torch.nn.Module):
                              nerf_feat=nerf_feature,
                              update_emas=update_emas,
                              **synthesis_kwargs)
+        if return_nerf:
+            nerf_feature_vis = nerf_feature.clone().detach()
+            nerf_feature_vis = nerf_feature_vis.sum(dim=1, keepdim=True)
+            nerf_feature_max = nerf_feature_vis.abs().flatten(1).max(dim=1)[0]
+            nerf_feature_max = nerf_feature_max[:, None, None, None]
+            nerf_feature_vis = nerf_feature_vis / nerf_feature_max
+            nerf_feature_vis = torch.cat([nerf_feature_vis] * 3, dim=1)
+            nerf_feature_vis = F.upsample(nerf_feature_vis, img.size(-1))
+            return img, nerf_feature_vis
         return img

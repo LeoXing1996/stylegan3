@@ -184,6 +184,8 @@ class ImageFolderDataset(Dataset):
         elif self._file_ext(self._path) == '.zip':
             self._type = 'zip'
             self._all_fnames = set(self._get_zipfile().namelist())
+        elif self._path[:2] == 's3':  # this is a ceph path
+            pass
         else:
             raise IOError('Path must point to a directory or zip')
 

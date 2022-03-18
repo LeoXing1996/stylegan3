@@ -527,33 +527,36 @@ def main(**kwargs):
             c.loss_kwargs.blur_init_sigma = 10
             # Fade out the blur during the first N kimg.
             c.loss_kwargs.blur_fade_kimg = c.batch_size * 200 / 32
-        if opts.nerf_config is not None:
-            import yaml
-            with open(opts.nerf_config, 'r') as f:
-                cfg_special = yaml.load(f, Loader=yaml.Loader)
-            # NOTE: overwrite the class name
+
+    if opts.nerf_config is not None:
+        import yaml
+        with open(opts.nerf_config, 'r') as f:
+            cfg_special = yaml.load(f, Loader=yaml.Loader)
+        # NOTE: overwrite the class name
+        if 'stylegan2' in opts.cfg:
             c.G_kwargs.class_name = ('training.networks_stylegan3.'
                                      'Generator_with_NeRF')
-            # NOTE: add nerf's config
-            nerf_kwargs = dnnlib.EasyDict()
-            c.G_kwargs.nerf_kwargs = cfg_special.get('nerf_kwargs',
-                                                     nerf_kwargs)
+        else:
+            c.G_kwargs.class_name = ('training.networks_stylegan3.'
+                                     'Generator_with_NeRF')
+        # NOTE: add nerf's config
+        nerf_kwargs = dnnlib.EasyDict()
+        c.G_kwargs.nerf_kwargs = cfg_special.get('nerf_kwargs', nerf_kwargs)
 
-            decoder_kwargs = dnnlib.EasyDict()
-            c.G_kwargs.decoder_kwargs = cfg_special.get(
-                'decoder_kwargs', decoder_kwargs)
+        decoder_kwargs = dnnlib.EasyDict()
+        c.G_kwargs.decoder_kwargs = cfg_special.get('decoder_kwargs',
+                                                    decoder_kwargs)
 
-            bg_decoder_kwargs = dnnlib.EasyDict()
-            c.G_kwargs.bg_decoder_kwargs = cfg_special.get(
-                'bg_decoder_kwargs', bg_decoder_kwargs)
+        bg_decoder_kwargs = dnnlib.EasyDict()
+        c.G_kwargs.bg_decoder_kwargs = cfg_special.get('bg_decoder_kwargs',
+                                                       bg_decoder_kwargs)
 
-            bbox_kwargs = dnnlib.EasyDict()
-            c.G_kwargs.bbox_kwargs = cfg_special.get('bbox_kwargs',
-                                                     bbox_kwargs)
+        bbox_kwargs = dnnlib.EasyDict()
+        c.G_kwargs.bbox_kwargs = cfg_special.get('bbox_kwargs', bbox_kwargs)
 
-            nerf_resume_kwargs = dnnlib.EasyDict()
-            c.G_kwargs.nerf_resume_kwargs = cfg_special.get(
-                'resume_kwargs', nerf_resume_kwargs)
+        nerf_resume_kwargs = dnnlib.EasyDict()
+        c.G_kwargs.nerf_resume_kwargs = cfg_special.get(
+            'resume_kwargs', nerf_resume_kwargs)
 
     # Augmentation.
     if opts.aug != 'noaug':

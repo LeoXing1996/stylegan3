@@ -184,6 +184,8 @@ def training_loop(
     G = dnnlib.util.construct_class_by_name(
         **G_kwargs, **common_kwargs).train().requires_grad_(False).to(
             device)  # subclass of torch.nn.Module
+    import ipdb
+    ipdb.set_trace()
     D = dnnlib.util.construct_class_by_name(
         **D_kwargs, **common_kwargs).train().requires_grad_(False).to(
             device)  # subclass of torch.nn.Module
@@ -280,6 +282,7 @@ def training_loop(
     grid_size = None
     grid_z = None
     grid_c = None
+    vis_nerf_output = hasattr(G, 'nerf')
     if rank == 0:
         print('Exporting sample images...')
         grid_size, images, labels = setup_snapshot_image_grid(
@@ -291,14 +294,26 @@ def training_loop(
         grid_z = torch.randn([labels.shape[0], G.z_dim],
                              device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
-        images = torch.cat([
-            G_ema(z=z, c=c, noise_mode='const').cpu()
-            for z, c in zip(grid_z, grid_c)
-        ]).numpy()
+        if vis_nerf_output:
+            images, nerfs = [], []
+            for z, c in zip(grid_z, grid_c):
+                image, nerf = G_ema(z=z, c=c, noise_mode='const',
+                                    return_nerf=True)
+                images.append(image.cpu())
+                nerfs.append(nerf.cpu())
+            images = torch.cat(images + nerfs, dim=0)
+            g_grid_size = [grid_size[0], grid_size[1] * 2]
+        else:
+            images = torch.cat([
+                G_ema(z=z, c=c, noise_mode='const').cpu()
+                for z, c in zip(grid_z, grid_c)
+            ]).numpy()
+            g_grid_size = grid_size
+
         save_image_grid(images,
                         os.path.join(run_dir, 'fakes_init.png'),
                         drange=[-1, 1],
-                        grid_size=grid_size)
+                        grid_size=g_grid_size)
 
     # Initialize logs.
     if rank == 0:
@@ -498,15 +513,24 @@ def training_loop(
         # Save image snapshot.
         if (rank == 0) and (image_snapshot_ticks is not None) and (
                 done or cur_tick % image_snapshot_ticks == 0):
-            images = torch.cat([
-                G_ema(z=z, c=c, noise_mode='const').cpu()
-                for z, c in zip(grid_z, grid_c)
-            ]).numpy()
+            if vis_nerf_output:
+                images, nerfs = [], []
+                for z, c in zip(grid_z, grid_c):
+                    image, nerf = G_ema(z=z, c=c, noise_mode='const',
+                                        return_nerf=True)
+                    images.append(image.cpu())
+                    nerfs.append(nerf.cpu())
+                images = torch.cat(images + nerfs, dim=0)
+            else:
+                images = torch.cat([
+                    G_ema(z=z, c=c, noise_mode='const').cpu()
+                    for z, c in zip(grid_z, grid_c)
+                ]).numpy()
             save_image_grid(images,
                             os.path.join(run_dir,
                                          f'fakes{cur_nimg//1000:06d}.png'),
                             drange=[-1, 1],
-                            grid_size=grid_size)
+                            grid_size=g_grid_size)
 
         # Save network snapshot.
         snapshot_pkl = None
