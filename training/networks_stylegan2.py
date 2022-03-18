@@ -960,15 +960,16 @@ class Generator_with_NeRF(torch.nn.Module):
         self.w_dim = w_dim
         self.img_resolution = img_resolution
         self.img_channels = img_channels
-        self.synthesis = NeRFSynthesisNetwork(w_dim=w_dim,
-                                              img_resolution=img_resolution,
-                                              img_channels=img_channels,
-                                              nerf_kwargs=nerf_kwargs,
-                                              bbox_kwargs=bbox_kwargs,
-                                              decoder_kwargs=decoder_kwargs,
-                                              bg_decoder_kwargs=bg_decoder_kwargs,
-                                              nerf_resume_kwargs=nerf_resume_kwargs,
-                                              **synthesis_kwargs)
+        self.synthesis = NeRFSynthesisNetwork(
+            w_dim=w_dim,
+            img_resolution=img_resolution,
+            img_channels=img_channels,
+            nerf_kwargs=nerf_kwargs,
+            bbox_kwargs=bbox_kwargs,
+            decoder_kwargs=decoder_kwargs,
+            bg_decoder_kwargs=bg_decoder_kwargs,
+            nerf_resume_kwargs=nerf_resume_kwargs,
+            **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
         self.mapping = MappingNetwork(z_dim=z_dim,
                                       c_dim=c_dim,
