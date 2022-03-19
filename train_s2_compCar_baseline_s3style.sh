@@ -27,5 +27,5 @@ srun -p ${PARTITION} \
     -x ${DRAIN_NODE} \
     ${SRUN_ARGS} \
     python train.py --outdir=${WORK_DIR} --cfg=${CONFIG} --gpus=${GPUS} \
-                    --slurm --batch 32 --aug noaug --gamma 8.2 --kimg 57000 \
+                    --slurm --batch 32 --mirror --gamma 8.2 --kimg 57000 \
                     --data s3://data/compCar256/ --desc s3-config-baseline
