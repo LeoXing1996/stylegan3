@@ -461,11 +461,14 @@ class PetrelDataset(Dataset):
         self._path = path
 
         self.client = FileClient(backend='petrel')
-        assert self.clilent.isdir(path), f'\'{path}\' is not a Petrel path.'
+        assert self.client.isdir(path), f'\'{path}\' is not a Petrel path.'
 
         self._all_fnames = [
             p for p in self.client.list_dir_or_file(
                 path, list_dir=False, recursive=True)
+        ]
+        self._all_fnames = [
+            self.client.join_path(self._path, p) for p in self._all_fnames
         ]
 
         PIL.Image.init()
