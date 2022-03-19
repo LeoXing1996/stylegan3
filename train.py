@@ -534,7 +534,7 @@ def main(**kwargs):
             cfg_special = yaml.load(f, Loader=yaml.Loader)
         # NOTE: overwrite the class name
         if 'stylegan2' in opts.cfg:
-            c.G_kwargs.class_name = ('training.networks_stylegan3.'
+            c.G_kwargs.class_name = ('training.networks_stylegan2.'
                                      'Generator_with_NeRF')
         else:
             c.G_kwargs.class_name = ('training.networks_stylegan3.'

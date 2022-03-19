@@ -176,19 +176,15 @@ class Conv2dLayer(torch.nn.Module):
             self,
             in_channels,  # Number of input channels.
             out_channels,  # Number of output channels.
-            # Width and height of the convolution kernel.
-        kernel_size,
+            kernel_size,  # Width and height of the convolution kernel.
             bias=True,  # Apply additive bias before the activation function?
-            # Activation function: 'relu', 'lrelu', etc.
-        activation='linear',
+            activation='linear',  # Activation function: 'relu', 'lrelu', etc.
             up=1,  # Integer upsampling factor.
             down=1,  # Integer downsampling factor.
-            # Low-pass filter to apply when resampling activations.
-        resample_filter=[1, 3, 3, 1],
-            # Clamp the output to +-X, None = disable clamping.
-            conv_clamp=None,
-            channels_last=False,  # Expect the input to have memory_format=channels_last?
-            trainable=True,  # Update the weights of this layer during training?
+            resample_filter=[1, 3, 3, 1],  # Low-pass filter to apply when resampling activations.  # noqa
+            conv_clamp=None,  # Clamp the output to +-X, None = disable clamping.  # noqa
+            channels_last=False,  # Expect the input to have memory_format=channels_last?  # noqa
+            trainable=True,  # Update the weights of this layer during training?  # noqa
     ):
         super().__init__()
         self.in_channels = in_channels
@@ -203,7 +199,8 @@ class Conv2dLayer(torch.nn.Module):
         self.weight_gain = 1 / np.sqrt(in_channels * (kernel_size**2))
         self.act_gain = bias_act.activation_funcs[activation].def_gain
 
-        memory_format = torch.channels_last if channels_last else torch.contiguous_format
+        memory_format = torch.channels_last \
+            if channels_last else torch.contiguous_format
         weight = torch.randn(
             [out_channels, in_channels, kernel_size,
              kernel_size]).to(memory_format=memory_format)
@@ -231,7 +228,8 @@ class Conv2dLayer(torch.nn.Module):
                                             flip_weight=flip_weight)
 
         act_gain = self.act_gain * gain
-        act_clamp = self.conv_clamp * gain if self.conv_clamp is not None else None
+        act_clamp = self.conv_clamp * gain \
+            if self.conv_clamp is not None else None
         x = bias_act.bias_act(x,
                               b,
                               act=self.activation,
@@ -732,11 +730,12 @@ class SynthesisNetwork(torch.nn.Module):
     def extra_repr(self):
         return ' '.join([
             f'w_dim={self.w_dim:d}, num_ws={self.num_ws:d},',
-            f'img_resolution={self.img_resolution:d}, img_channels={self.img_channels:d},',
+            f'img_resolution={self.img_resolution:d}, img_channels={self.img_channels:d},',  # noqa
             f'num_fp16_res={self.num_fp16_res:d}'
         ])
 
 
+@persistence.persistent_class
 class NeRFSynthesisNetwork(torch.nn.Module):
 
     def __init__(
@@ -1149,7 +1148,8 @@ class MinibatchStdLayer(torch.nn.Module):
         F = self.num_channels
         c = C // F
 
-        # [GnFcHW] Split minibatch N into n groups of size G, and channels C into F groups of size c.
+        # [GnFcHW] Split minibatch N into n groups of size G,
+        # and channels C into F groups of size c.
         y = x.reshape(G, -1, F, c, H, W)
         # [GnFcHW] Subtract mean over group.
         y = y - y.mean(dim=0)
@@ -1255,7 +1255,8 @@ class DiscriminatorEpilogue(torch.nn.Module):
         return x
 
     def extra_repr(self):
-        return f'resolution={self.resolution:d}, architecture={self.architecture:s}'
+        return (f'resolution={self.resolution:d}, '
+                f'architecture={self.architecture:s}')
 
 
 # ----------------------------------------------------------------------------
