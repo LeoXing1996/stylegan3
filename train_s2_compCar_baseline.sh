@@ -25,5 +25,5 @@ srun -p ${PARTITION} \
     --kill-on-bad-exit=1 \
     ${SRUN_ARGS} \
     python train.py --outdir=${WORK_DIR} --cfg=${CONFIG} --gpus=${GPUS} \
-                    --slurm --aug noaug --gamma 10 --kimg 57000 \
+                    --slurm --batch 32 --aug noaug --gamma 10 --kimg 57000 \
                     --data s3://data/compCar256/
