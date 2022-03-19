@@ -4,6 +4,7 @@ set -x
 
 PARTITION=mm_lol
 JOB_NAME=s2-compCar-baseline
+DRAIN_NODE="SH-IDC1-10-142-4-150"
 
 CONFIG=stylegan2
 WORK_DIR=./out
@@ -23,6 +24,7 @@ srun -p ${PARTITION} \
     --ntasks-per-node=${GPUS_PER_NODE} \
     --cpus-per-task=${CPUS_PER_TASK} \
     --kill-on-bad-exit=1 \
+    -x ${DRAIN_NODE} \
     ${SRUN_ARGS} \
     python train.py --outdir=${WORK_DIR} --cfg=${CONFIG} --gpus=${GPUS} \
                     --slurm --batch 32 --aug noaug --gamma 10 --kimg 57000 \
