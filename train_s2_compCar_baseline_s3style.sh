@@ -4,7 +4,7 @@ set -x
 
 PARTITION=mm_lol
 JOB_NAME=s2-compCar-baseline
-DRAIN_NODE="SH-IDC1-10-142-4-150"
+DRAIN_NODE="SH-IDC1-10-142-4-150,SH-IDC1-10-142-4-159"
 
 CONFIG=stylegan2
 WORK_DIR=./out
