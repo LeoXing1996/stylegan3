@@ -409,10 +409,6 @@ def parse_comma_separated_list(s):
               is_flag=True,
               default=False,
               help='Whether run code in slurm mode.')
-@click.option('--use_zip',
-              is_flag=True,
-              default=False,
-              help='Whether run code in with zip loader.')
 @click.option('--nerf_config',
               is_flag=False,
               default=None,
@@ -468,9 +464,7 @@ def main(**kwargs):
     # Training set.
     c.training_set_kwargs, dataset_name = init_dataset_kwargs(
         data=opts.data,
-        subset=opts.subset,
-        slurm=opts.slurm,
-        use_zip=opts.use_zip)
+        slurm=opts.slurm)
     if opts.cond and not c.training_set_kwargs.use_labels:
         raise click.ClickException(
             '--cond=True requires labels specified in dataset.json')
