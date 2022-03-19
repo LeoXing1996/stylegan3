@@ -88,7 +88,7 @@ def save_image_grid(img, fname, drange, grid_size, client=None):
     if C == 1:
         img_pil = PIL.Image.fromarray(img[:, :, 0], 'L')
     if C == 3:
-        img_pil = PIL.Image.fromarray(img, 'RGB').
+        img_pil = PIL.Image.fromarray(img, 'RGB')
     if client is not None:
         client.put(memoryview(img_pil).tobytes(), fname)
     else:
