@@ -8,6 +8,7 @@
 """Main training loop."""
 
 import copy
+import io
 import json
 import os
 import pickle
@@ -90,7 +91,12 @@ def save_image_grid(img, fname, drange, grid_size, client=None):
     if C == 3:
         img_pil = PIL.Image.fromarray(img, 'RGB')
     if client is not None:
-        client.put(memoryview(img_pil).tobytes(), fname)
+        image_bits = io.BytesIO()
+        img_pil.save(image_bits,
+                     format='png',
+                     compress_level=0,
+                     optimize=False)
+        client.put(image_bits.getbuffer().tobytes(), fname)
     else:
         img_pil.save(fname)
 
@@ -316,14 +322,17 @@ def training_loop(
         save_image_grid(images,
                         os.path.join(run_dir, 'reals.png'),
                         drange=[0, 255],
-                        grid_size=grid_size, client=client)
+                        grid_size=grid_size,
+                        client=client)
         grid_z = torch.randn([labels.shape[0], G.z_dim],
                              device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
         if vis_nerf_output:
             images, nerfs = [], []
             for z, c in zip(grid_z, grid_c):
-                image, nerf = G_ema(z=z, c=c, noise_mode='const',
+                image, nerf = G_ema(z=z,
+                                    c=c,
+                                    noise_mode='const',
                                     return_nerf=True)
                 images.append(image.cpu())
                 nerfs.append(nerf.cpu())
@@ -339,7 +348,8 @@ def training_loop(
         save_image_grid(images,
                         os.path.join(run_dir, 'fakes_init.png'),
                         drange=[-1, 1],
-                        grid_size=g_grid_size, client=client)
+                        grid_size=g_grid_size,
+                        client=client)
 
     # Train.
     if rank == 0:
@@ -492,14 +502,14 @@ def training_loop(
             f"cpumem {training_stats.report0('Resources/cpu_mem_gb', psutil.Process(os.getpid()).memory_info().rss / 2**30):<6.2f}"  # noqa
         ]
         fields += [
-            f"gpumem {training_stats.report0('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30):<6.2f}"   # noqa
+            f"gpumem {training_stats.report0('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30):<6.2f}"  # noqa
         ]
         fields += [
-            f"reserved {training_stats.report0('Resources/peak_gpu_mem_reserved_gb', torch.cuda.max_memory_reserved(device) / 2**30):<6.2f}"   # noqa
+            f"reserved {training_stats.report0('Resources/peak_gpu_mem_reserved_gb', torch.cuda.max_memory_reserved(device) / 2**30):<6.2f}"  # noqa
         ]
         torch.cuda.reset_peak_memory_stats()
         fields += [
-            f"augment {training_stats.report0('Progress/augment', float(augment_pipe.p.cpu()) if augment_pipe is not None else 0):.3f}"   # noqa
+            f"augment {training_stats.report0('Progress/augment', float(augment_pipe.p.cpu()) if augment_pipe is not None else 0):.3f}"  # noqa
         ]
         training_stats.report0('Timing/total_hours',
                                (tick_end_time - start_time) / (60 * 60))
@@ -522,7 +532,9 @@ def training_loop(
             if vis_nerf_output:
                 images, nerfs = [], []
                 for z, c in zip(grid_z, grid_c):
-                    image, nerf = G_ema(z=z, c=c, noise_mode='const',
+                    image, nerf = G_ema(z=z,
+                                        c=c,
+                                        noise_mode='const',
                                         return_nerf=True)
                     images.append(image.cpu())
                     nerfs.append(nerf.cpu())
@@ -536,7 +548,8 @@ def training_loop(
                             os.path.join(run_dir,
                                          f'fakes{cur_nimg//1000:06d}.png'),
                             drange=[-1, 1],
-                            grid_size=g_grid_size, client=client)
+                            grid_size=g_grid_size,
+                            client=client)
 
         # Save network snapshot.
         snapshot_pkl = None
@@ -565,8 +578,8 @@ def training_loop(
                 with open(snapshot_pkl, 'wb') as f:
                     pickle.dump(snapshot_data, f)
                 if client is not None:
-                    client.put(memoryview(snapshot_data).tobytes(),
-                               snapshot_pkl)
+                    client.put(
+                        memoryview(snapshot_data).tobytes(), snapshot_pkl)
 
         # Evaluate metrics.
         if (snapshot_data is not None) and (len(metrics) > 0):
