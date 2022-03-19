@@ -111,7 +111,11 @@ def kid50k_full(opts):
                                                 num_subsets=100,
                                                 max_subset_size=1000)
     # code for kid 50k --> only difference: max_real: [100k, 50k]
-    # kid = kernel_inception_distance.compute_kid(opts, max_real=50000, num_gen=50000, num_subsets=100, max_subset_size=1000)
+    # kid = kernel_inception_distance.compute_kid(opts,
+    #                                             max_real=50000,
+    #                                             num_gen=50000,
+    #                                             num_subsets=100,
+    #                                             max_subset_size=1000)
     return dict(kid50k_full=kid)
 
 
