@@ -128,6 +128,14 @@ def launch_training(c, desc, outdir, dry_run):
         prev_run_ids = [int(x.group()) for x in prev_run_ids if x is not None]
         cur_run_id = max(prev_run_ids, default=-1)  # run dir made by rank0
         c.run_dir = os.path.join(outdir, f'{cur_run_id:05d}-{desc}')
+
+        # get petrel dir
+        bucket = c.bucket
+        if bucket.endswith('/'):
+            bucket = bucket[:-1]
+        c.petrel_dir = os.path.join(bucket, f'{cur_run_id:05d}-{desc}')
+        c.petrel_mapping = {c.run_dir: c.petrel_dir}
+
     else:
         prev_run_dirs = []
         if os.path.isdir(outdir):
@@ -410,6 +418,10 @@ def parse_comma_separated_list(s):
               is_flag=False,
               default=None,
               help='The config for nerf generator.')
+@click.option('--bucket',
+              is_flag=False,
+              default='s3://mmgen_dev/',
+              help='The bucket on petrel to save results.')
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper "Alias-Free
     Generative Adversarial Networks".
@@ -595,6 +607,7 @@ def main(**kwargs):
 
     # slurm related setting.
     c.slurm = opts.slurm
+    c.bucket = opts.bucket
 
     # Description string.
     desc = (f'{opts.cfg:s}-{dataset_name:s}-gpus{c.num_gpus:d}-'

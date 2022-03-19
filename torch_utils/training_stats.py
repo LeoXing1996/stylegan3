@@ -24,15 +24,13 @@ from . import misc
 # ---------------------------------------------------------------------------
 
 _num_moments = 3  # [num_scalars, sum_of_scalars, sum_of_squares]
-_reduce_dtype = torch.float32  # Data type to use for initial per-tensor reduction.
+_reduce_dtype = torch.float32  # Data type to use for initial per-tensor reduction.  # noqa
 _counter_dtype = torch.float64  # Data type to use for the internal counters.
 _rank = 0  # Rank of the current process.
-_sync_device = None  # Device to use for multiprocess communication. None = single-process.
+_sync_device = None  # Device to use for multiprocess communication. None = single-process.  # noqa
 _sync_called = False  # Has _sync() been called yet?
-_counters = dict(
-)  # Running counters on each device, updated by report(): name => device => torch.Tensor
-_cumulative = dict(
-)  # Cumulative counters on the CPU, updated by _sync(): name => torch.Tensor
+_counters = dict()  # Running counters on each device, updated by report(): name => device => torch.Tensor  # noqa
+_cumulative = dict()  # Cumulative counters on the CPU, updated by _sync(): name => torch.Tensor  # noqa
 
 # ---------------------------------------------------------------------------
 

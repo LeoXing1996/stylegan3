@@ -72,7 +72,7 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 # ---------------------------------------------------------------------------
 
 
-def save_image_grid(img, fname, drange, grid_size, slurm=False):
+def save_image_grid(img, fname, drange, grid_size, client=None):
     lo, hi = drange
     img = np.asarray(img, dtype=np.float32)
     img = (img - lo) * (255 / (hi - lo))
@@ -86,11 +86,13 @@ def save_image_grid(img, fname, drange, grid_size, slurm=False):
 
     assert C in [1, 3]
     if C == 1:
-        PIL.Image.fromarray(img[:, :, 0], 'L').save(fname)
+        img_pil = PIL.Image.fromarray(img[:, :, 0], 'L')
     if C == 3:
-        PIL.Image.fromarray(img, 'RGB').save(fname)
-    if slurm:  # TODO: to ceph
-        pass
+        img_pil = PIL.Image.fromarray(img, 'RGB').
+    if client is not None:
+        client.put(memoryview(img_pil).tobytes(), fname)
+    else:
+        img_pil.save(fname)
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +132,9 @@ def training_loop(
         abort_fn=None,  # Callback function for determining whether to abort training. Must return consistent results across ranks.
         progress_fn=None,  # Callback function for updating training progress. Called for all ranks.
         slurm=False,  # key for slurm training
+        bucket=None,  # the bucket (or root dir) on petrel
+        petrel_dir=None,  # the absolute path on petrel
+        petrel_mapping=None,  # the mapping dict for petrel client
 ):
 
     # Initialize.
@@ -184,8 +189,6 @@ def training_loop(
     G = dnnlib.util.construct_class_by_name(
         **G_kwargs, **common_kwargs).train().requires_grad_(False).to(
             device)  # subclass of torch.nn.Module
-    import ipdb
-    ipdb.set_trace()
     D = dnnlib.util.construct_class_by_name(
         **D_kwargs, **common_kwargs).train().requires_grad_(False).to(
             device)  # subclass of torch.nn.Module
@@ -278,6 +281,29 @@ def training_loop(
             phase.start_event = torch.cuda.Event(enable_timing=True)
             phase.end_event = torch.cuda.Event(enable_timing=True)
 
+    # Initialize logs. --> move this part to above draw image to initialize client
+    if rank == 0:
+        print('Initializing logs...')
+    stats_collector = training_stats.Collector(regex='.*')
+    stats_metrics = dict()
+    stats_jsonl = None
+    stats_tfevents = None
+    if rank == 0:
+        stats_jsonl = open(os.path.join(run_dir, 'stats.jsonl'), 'wt')
+        try:
+            if slurm:
+                from pavi import SummaryWriter as Writer
+                proj_name = run_dir.split('/')[-1]
+                stats_tfevents = Writer(proj_name, project='NeRF-GANs')
+                from mmcv.fileio import FileClient
+                client = FileClient('petrel', path_mapping=petrel_mapping)
+            else:
+                import torch.utils.tensorboard as tensorboard
+                stats_tfevents = tensorboard.SummaryWriter(run_dir)
+                client = None
+        except ImportError as err:
+            print('Skipping tfevents export:', err)
+
     # Export sample images.
     grid_size = None
     grid_z = None
@@ -290,7 +316,7 @@ def training_loop(
         save_image_grid(images,
                         os.path.join(run_dir, 'reals.png'),
                         drange=[0, 255],
-                        grid_size=grid_size)
+                        grid_size=grid_size, client=client)
         grid_z = torch.randn([labels.shape[0], G.z_dim],
                              device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
@@ -313,27 +339,7 @@ def training_loop(
         save_image_grid(images,
                         os.path.join(run_dir, 'fakes_init.png'),
                         drange=[-1, 1],
-                        grid_size=g_grid_size)
-
-    # Initialize logs.
-    if rank == 0:
-        print('Initializing logs...')
-    stats_collector = training_stats.Collector(regex='.*')
-    stats_metrics = dict()
-    stats_jsonl = None
-    stats_tfevents = None
-    if rank == 0:
-        stats_jsonl = open(os.path.join(run_dir, 'stats.jsonl'), 'wt')
-        try:
-            if slurm:
-                from pavi import SummaryWriter as Writer
-                proj_name = run_dir.split('/')[-1]
-                stats_tfevents = Writer(proj_name, project='StyleGAN3')
-            else:
-                import torch.utils.tensorboard as tensorboard
-                stats_tfevents = tensorboard.SummaryWriter(run_dir)
-        except ImportError as err:
-            print('Skipping tfevents export:', err)
+                        grid_size=g_grid_size, client=client)
 
     # Train.
     if rank == 0:
@@ -458,42 +464,42 @@ def training_loop(
                 cur_nimg < tick_start_nimg + kimg_per_tick * 1000):
             continue
 
-        # Print status line, accumulating the same information in training_stats.
+        # Print status line, accumulating the same information in training_stats.  # noqa
         tick_end_time = time.time()
         fields = []
         fields += [
             f"tick {training_stats.report0('Progress/tick', cur_tick):<5d}"
         ]
         fields += [
-            f"kimg {training_stats.report0('Progress/kimg', cur_nimg / 1e3):<8.1f}"
+            f"kimg {training_stats.report0('Progress/kimg', cur_nimg / 1e3):<8.1f}"  # noqa
         ]
         fields += [
-            f"time {dnnlib.util.format_time(training_stats.report0('Timing/total_sec', tick_end_time - start_time)):<12s}"
+            f"time {dnnlib.util.format_time(training_stats.report0('Timing/total_sec', tick_end_time - start_time)):<12s}"  # noqa
         ]
         fields += [
-            f"sec/tick {training_stats.report0('Timing/sec_per_tick', tick_end_time - tick_start_time):<7.1f}"
+            f"sec/tick {training_stats.report0('Timing/sec_per_tick', tick_end_time - tick_start_time):<7.1f}"  # noqa
         ]
         fields += [
-            f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"
+            f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"  # noqa
         ]
         fields += [
-            f"data_time {training_stats.report0('Timing/data_time', data_time_log[-1]):6.4f}"
+            f"data_time {training_stats.report0('Timing/data_time', data_time_log[-1]):6.4f}"  # noqa
         ]
         fields += [
-            f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"
+            f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"  # noqa
         ]
         fields += [
-            f"cpumem {training_stats.report0('Resources/cpu_mem_gb', psutil.Process(os.getpid()).memory_info().rss / 2**30):<6.2f}"
+            f"cpumem {training_stats.report0('Resources/cpu_mem_gb', psutil.Process(os.getpid()).memory_info().rss / 2**30):<6.2f}"  # noqa
         ]
         fields += [
-            f"gpumem {training_stats.report0('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30):<6.2f}"
+            f"gpumem {training_stats.report0('Resources/peak_gpu_mem_gb', torch.cuda.max_memory_allocated(device) / 2**30):<6.2f}"   # noqa
         ]
         fields += [
-            f"reserved {training_stats.report0('Resources/peak_gpu_mem_reserved_gb', torch.cuda.max_memory_reserved(device) / 2**30):<6.2f}"
+            f"reserved {training_stats.report0('Resources/peak_gpu_mem_reserved_gb', torch.cuda.max_memory_reserved(device) / 2**30):<6.2f}"   # noqa
         ]
         torch.cuda.reset_peak_memory_stats()
         fields += [
-            f"augment {training_stats.report0('Progress/augment', float(augment_pipe.p.cpu()) if augment_pipe is not None else 0):.3f}"
+            f"augment {training_stats.report0('Progress/augment', float(augment_pipe.p.cpu()) if augment_pipe is not None else 0):.3f}"   # noqa
         ]
         training_stats.report0('Timing/total_hours',
                                (tick_end_time - start_time) / (60 * 60))
@@ -530,7 +536,7 @@ def training_loop(
                             os.path.join(run_dir,
                                          f'fakes{cur_nimg//1000:06d}.png'),
                             drange=[-1, 1],
-                            grid_size=g_grid_size)
+                            grid_size=g_grid_size, client=client)
 
         # Save network snapshot.
         snapshot_pkl = None
@@ -558,8 +564,9 @@ def training_loop(
             if rank == 0:
                 with open(snapshot_pkl, 'wb') as f:
                     pickle.dump(snapshot_data, f)
-                if slurm:  # TODO: write to slurm
-                    pass
+                if client is not None:
+                    client.put(memoryview(snapshot_data).tobytes(),
+                               snapshot_pkl)
 
         # Evaluate metrics.
         if (snapshot_data is not None) and (len(metrics) > 0):
