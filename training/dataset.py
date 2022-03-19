@@ -454,7 +454,7 @@ class PetrelDataset(Dataset):
     def __init__(
             self,
             path,  # Path to directory or zip.
-            resolution=None,  # Ensure specific resolution, None = highest available.
+            resolution=None,  # Ensure specific resolution, None = highest available.  # noqa
             **super_kwargs,  # Additional arguments for the Dataset base class.
     ):
         from mmcv.fileio import FileClient
@@ -464,7 +464,8 @@ class PetrelDataset(Dataset):
         assert self.clilent.isdir(path), f'\'{path}\' is not a Petrel path.'
 
         self._all_fnames = [
-            p for p in self.client.list_dir_or_file(path, list_dir=False)
+            p for p in self.client.list_dir_or_file(
+                path, list_dir=False, recursive=True)
         ]
 
         PIL.Image.init()
