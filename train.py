@@ -201,16 +201,16 @@ def launch_training(c, desc, outdir, dry_run):
 def init_dataset_kwargs(data=None, slurm=False):
     try:
         class_parent = 'training.dataset.{}'
-        class_name = 'ImageFolderDataset'
-        if data is not None:
-            class_name = class_parent.format(class_name)
-            kwargs = dict(path=data)
-        elif slurm:
-            class_name = class_parent.format('PetrelDataset')
-            kwargs = dict(path=data)
+        if slurm:
+            class_name = 'PetrelDataset'
+        elif data is not None:
+            class_name = 'ImageFolderDataset'
         else:
             raise ValueError(
                 'data and name must not be None at the same time.')
+
+        class_name = class_parent.format(class_name)
+        kwargs = dict(path=data)
 
         dataset_kwargs = dnnlib.EasyDict(class_name=class_name,
                                          use_labels=True,
