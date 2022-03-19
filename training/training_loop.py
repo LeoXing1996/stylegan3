@@ -578,8 +578,9 @@ def training_loop(
                 with open(snapshot_pkl, 'wb') as f:
                     pickle.dump(snapshot_data, f)
                 if client is not None:
-                    client.put(
-                        memoryview(snapshot_data).tobytes(), snapshot_pkl)
+                    with io.BytesIO() as f:
+                        pickle.dump(snapshot_data, f)
+                        client.put(f.getvalue(), snapshot_pkl)
 
         # Evaluate metrics.
         if (snapshot_data is not None) and (len(metrics) > 0):

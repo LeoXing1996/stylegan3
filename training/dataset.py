@@ -10,7 +10,6 @@
 import json
 import os
 import zipfile
-from copy import deepcopy
 
 import cv2
 import mmcv
@@ -271,184 +270,6 @@ class ImageFolderDataset(Dataset):
 # ---------------------------------------------------------------------------
 
 
-class CenterCropLongEdge:
-    """Center crop the given image by the long edge.
-
-    Args:
-        keys (list[str]): The images to be cropped.
-    """
-
-    def __init__(self, keys):
-        assert keys, 'Keys should not be empty.'
-        self.keys = keys
-
-    def __call__(self, results):
-        """Call function.
-
-        Args:
-            results (dict): A dict containing the necessary information and
-                data for augmentation.
-
-        Returns:
-            dict: A dict containing the processed data and information.
-        """
-
-        for key in self.keys:
-            img = results[key]
-            img_height, img_width = img.shape[:2]
-            crop_size = min(img_height, img_width)
-            y1 = 0 if img_height == crop_size else \
-                int(round(img_height - crop_size) / 2)
-            x1 = 0 if img_width == crop_size else \
-                int(round(img_width - crop_size) / 2)
-            y2 = y1 + crop_size - 1
-            x2 = x1 + crop_size - 1
-
-            img = mmcv.imcrop(img, bboxes=np.array([x1, y1, x2, y2]))
-            results[key] = img
-
-        return results
-
-    def __repr__(self):
-        repr_str = self.__class__.__name__
-        repr_str += (f'(keys={self.keys})')
-        return repr_str
-
-
-class MMImageFolderDataset(ImageFolderDataset):
-
-    _handler_cfg = dict(
-        car256={
-            'path': './data/lsun-car/',
-            'slurm': {
-                'backend': 'petrel',
-                'path_mapping': {
-                    './data/lsun-car/':
-                    'openmmlab:s3://openmmlab/datasets/editing/lsun/images/car/'  # noqa
-                },
-                'enable_mc': True,
-            },
-            'zip': {
-                'backend': 'zip',
-                'zip_path': './data/car256.zip',
-                'res': 256
-            },
-            'non_slurm': {
-                'backend': 'disk'
-            }
-        },
-        cmp_car256={
-            'path': './data/comperhensive_car/',
-            'slurm': {},
-            'zip': {
-                'backend': 'zip',
-                'zip_path': './data/comp_car256.zip',
-                'res': 256
-            },
-            'non_slurm': {
-                'backend': 'zip'
-            }
-        },
-        afhq256={
-            'path': '',
-            'slurm': {
-                'backend': 'petrel',
-                'path_mapping': {
-                    './data/afhq/':
-                    'openmmlab:s3://openmmlab/datasets/editing/afhq/'
-                },
-                'enable_mc': True
-            },
-            'zip': {
-                'backend': 'zip',
-                'zip_path': './data/afhq256.zip',
-                'res': 256
-            },
-            'non_slurm': {
-                'backend': 'disk'
-            }
-        },
-        ffhq256={
-            'path': './data/ffhq256/',
-            'slurm': {
-                'backend': 'petrel',
-                'path_mapping': {
-                    './data/ffhq256/':
-                    'openmmlab:s3://openmmlab/datasets/editing/ffhq/ffhq_imgs/ffhq_256/'  # noqa
-                },
-                'enable_mc': True
-            },
-            'zip': {
-                'backend': 'zip',
-                'zip_path': './data/ffhq256.zip',
-                'res': 256
-            },
-            'non_slurm': {
-                'backend': 'disk'
-            }
-        })
-
-    def __init__(self,
-                 name,
-                 resolution=None,
-                 slurm=False,
-                 use_zip=False,
-                 **super_kwargs):
-        handler_cfg = deepcopy(self._handler_cfg[name])
-        path = handler_cfg['path']
-
-        self.is_slurm = slurm
-        self.use_zip = use_zip
-
-        if self.use_zip:
-            # zip is prior than slurm
-            self.file_client_cfg = handler_cfg['zip']
-            path = handler_cfg['zip']['zip_path']
-            # zip backend need pre-defined resolution, because we cannot call
-            # `self._load_raw_image` in `__init__`
-            resolution = self.file_client_cfg.pop('res')
-        elif self.is_slurm:
-            self.file_client_cfg = handler_cfg['slurm']
-        else:
-            self.file_client_cfg = handler_cfg['non_slurm']
-        self.file_client = None
-
-        super().__init__(path=path, resolution=resolution, **super_kwargs)
-
-    @staticmethod
-    def center_crop(width, height, img):
-        crop = np.min(img.shape[:2])
-        img = img[(img.shape[0] - crop) // 2:(img.shape[0] + crop) // 2,
-                  (img.shape[1] - crop) // 2:(img.shape[1] + crop) // 2]
-        img = PIL.Image.fromarray(img, 'RGB')
-        img = img.resize((width, height), PIL.Image.LANCZOS)
-        return np.array(img)
-
-    @staticmethod
-    def center_crop_width(width, height, img):
-        # NOTE: refer to lsun-wide preprocession in stylegan2
-        # TODO:
-        pass
-
-    def _load_raw_image(self, raw_idx):
-        fname = self._image_fnames[raw_idx]
-        if not self.use_zip:
-            fname = os.path.join(self._path, fname)
-        if self.file_client is None:
-            self.file_client = FileClient(**self.file_client_cfg)
-        image_bytes = self.file_client.get(fname)
-        image = mmcv.imfrombytes(image_bytes,
-                                 flag='color',
-                                 channel_order='rgb',
-                                 backend='pillow')
-
-        if self.is_slurm:
-            # NOTE: hard code width and height here
-            image = self.center_crop(256, 256, image)
-        image = image.transpose(2, 0, 1)  # HWC => CHW
-        return image
-
-
 class PetrelDataset(Dataset):
 
     def __init__(
@@ -457,7 +278,6 @@ class PetrelDataset(Dataset):
             resolution=None,  # Ensure specific resolution, None = highest available.  # noqa
             **super_kwargs,  # Additional arguments for the Dataset base class.
     ):
-        from mmcv.fileio import FileClient
         self._path = path
 
         self.client = FileClient(backend='petrel')
