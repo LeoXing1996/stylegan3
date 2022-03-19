@@ -12,6 +12,7 @@ import os
 import zipfile
 from copy import deepcopy
 
+import cv2
 import mmcv
 import numpy as np
 import PIL.Image
@@ -29,6 +30,7 @@ except ImportError:
 
 
 class Dataset(torch.utils.data.Dataset):
+
     def __init__(
             self,
             name,  # Name of the dataset.
@@ -165,6 +167,7 @@ class Dataset(torch.utils.data.Dataset):
 
 
 class ImageFolderDataset(Dataset):
+
     def __init__(
             self,
             path,  # Path to directory or zip.
@@ -342,7 +345,9 @@ class MMImageFolderDataset(ImageFolderDataset):
                 'zip_path': './data/comp_car256.zip',
                 'res': 256
             },
-            'non_slurm': {'backend': 'zip'}
+            'non_slurm': {
+                'backend': 'zip'
+            }
         },
         afhq256={
             'path': '',
@@ -442,3 +447,75 @@ class MMImageFolderDataset(ImageFolderDataset):
             image = self.center_crop(256, 256, image)
         image = image.transpose(2, 0, 1)  # HWC => CHW
         return image
+
+
+class PetrelDataset(Dataset):
+
+    def __init__(
+            self,
+            path,  # Path to directory or zip.
+            resolution=None,  # Ensure specific resolution, None = highest available.
+            **super_kwargs,  # Additional arguments for the Dataset base class.
+    ):
+        from mmcv.fileio import FileClient
+        self._path = path
+
+        self.client = FileClient(backend='petrel')
+        assert self.clilent.isdir(path), f'\'{path}\' is not a Petrel path.'
+
+        self._all_fnames = [
+            p for p in self.client.list_dir_or_file(path, list_dir=False)
+        ]
+
+        PIL.Image.init()
+        self._image_fnames = sorted(
+            fname for fname in self._all_fnames
+            if self._file_ext(fname) in PIL.Image.EXTENSION)
+        if len(self._image_fnames) == 0:
+            raise IOError('No image files found in the specified path')
+
+        name = os.path.splitext(os.path.basename(self._path))[0]
+        raw_shape = [len(self._image_fnames)] + list(
+            self._load_raw_image(0).shape)
+        if resolution is not None:
+            raw_shape[2] = raw_shape[3] = resolution
+        super().__init__(name=name, raw_shape=raw_shape, **super_kwargs)
+
+    @staticmethod
+    def _file_ext(fname):
+        return os.path.splitext(fname)[1].lower()
+
+    def _open_file(self, fname):
+        if self._type == 'dir':
+            return open(os.path.join(self._path, fname), 'rb')
+        if self._type == 'zip':
+            return self._get_zipfile().open(fname, 'r')
+        return None
+
+    def close(self):
+        pass
+
+    def __getstate__(self):
+        return dict(super().__getstate__(), _zipfile=None)
+
+    def _load_raw_image(self, raw_idx):
+        fname = self._image_fnames[raw_idx]
+        img_bytes = self.client.get(fname)
+        image = mmcv.imfrombytes(img_bytes,
+                                 flag='color',
+                                 channel_order='rgb',
+                                 backend='pillow')
+
+        if image.ndim == 2:
+            image = image[:, :, np.newaxis]  # HW => HWC
+        if hasattr(
+                self, '_raw_shape'
+        ) and image.shape[-1] != self.resolution:  # resize input image
+            image = cv2.resize(image, (self.resolution, self.resolution),
+                               interpolation=cv2.INTER_AREA)
+        image = image.transpose(2, 0, 1)  # HWC => CHW
+        return image
+
+    def _load_raw_labels(self):
+        # TODO: do not support labels
+        return None

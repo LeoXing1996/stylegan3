@@ -198,16 +198,16 @@ def launch_training(c, desc, outdir, dry_run):
 # ---------------------------------------------------------------------------
 
 
-def init_dataset_kwargs(data=None, subset=None, slurm=False, use_zip=False):
+def init_dataset_kwargs(data=None, slurm=False):
     try:
         class_parent = 'training.dataset.{}'
         class_name = 'ImageFolderDataset'
         if data is not None:
             class_name = class_parent.format(class_name)
             kwargs = dict(path=data)
-        elif subset is not None:
-            class_name = class_parent.format('MM' + class_name)
-            kwargs = dict(name=subset, slurm=slurm, use_zip=use_zip)
+        elif slurm:
+            class_name = class_parent.format('PetrelDataset')
+            kwargs = dict(path=data)
         else:
             raise ValueError(
                 'data and name must not be None at the same time.')
@@ -256,7 +256,6 @@ def parse_comma_separated_list(s):
               type=click.Choice(['stylegan3-t', 'stylegan3-r', 'stylegan2']),
               required=True)
 @click.option('--data', help='Training data', metavar='[ZIP|DIR]', type=str)
-@click.option('--subset', help='Subset of training data', type=str)
 @click.option('--gpus',
               help='Number of GPUs to use',
               metavar='INT',
