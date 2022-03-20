@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 set -x
 
-
 PARTITION=mm_lol
-JOB_NAME=s2-compCar-baseline
 DRAIN_NODE="SH-IDC1-10-142-4-150,SH-IDC1-10-142-4-159"
-
-CONFIG=stylegan2
-WORK_DIR=./out
-
 
 GPUS=${GPUS:-8}
 GPUS_PER_NODE=${GPUS_PER_NODE:-8}
 CPUS_PER_TASK=${CPUS_PER_TASK:-5}
-PY_ARGS=${@:5}
 SRUN_ARGS=${SRUN_ARGS:-""}
+
+# load configs
+VAR_FILE=$1
+source ${VAR_FILE}
+
+WORK_DIR=./out
 
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
 srun -p ${PARTITION} \
@@ -27,5 +26,5 @@ srun -p ${PARTITION} \
     -x ${DRAIN_NODE} \
     ${SRUN_ARGS} \
     python train.py --outdir=${WORK_DIR} --cfg=${CONFIG} --gpus=${GPUS} \
-                    --slurm --batch 32 --aug noaug --gamma 10 --kimg 57000 \
-                    --data s3://data/compCar256/ --desc config-e-baseline
+                    --slurm --batch ${BATCH} --kimg ${KIMG} --data ${DATA} --desc ${DESC}\
+                    ${PY_ARGS}
