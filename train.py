@@ -606,7 +606,7 @@ def main(**kwargs):
     desc = (f'{opts.cfg:s}-{dataset_name:s}-gpus{c.num_gpus:d}-'
             f'batch{c.batch_size:d}-gamma{c.loss_kwargs.r1_gamma:g}')
     if opts.nerf_config is not None:
-        nerf_config_name = os.path.basename(opts.nerf_config)
+        nerf_config_name = os.path.basename(opts.nerf_config).split('.')[0]
         desc += f'-nerf_cfg-{nerf_config_name}'
     if opts.desc is not None:
         desc += f'-{opts.desc}'
