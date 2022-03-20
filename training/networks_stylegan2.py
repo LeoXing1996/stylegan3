@@ -845,7 +845,7 @@ class NeRFSynthesisNetwork(torch.nn.Module):
 
             # the last output layer may not match
             nerf.load_state_dict(target_state_dict, strict=False)
-            if nerf_pretrain.get('freeze', True):
+            if nerf_pretrain.get('freeze', False):
                 for n, p in nerf.named_parameters():
                     if 'out' not in n:
                         p.requires_grad_(False)
