@@ -27,4 +27,4 @@ srun -p ${PARTITION} \
     ${SRUN_ARGS} \
     python train.py --outdir=${WORK_DIR} --cfg=${CONFIG} --gpus=${GPUS} \
                     --slurm --batch ${BATCH} --kimg ${KIMG} --data ${DATA} --desc ${DESC}\
-                    ${PY_ARGS}
+                    ${PYTHON_ARGS}
