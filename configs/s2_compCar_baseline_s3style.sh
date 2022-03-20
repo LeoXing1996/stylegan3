@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# s2 network + default s3 hyperparameters
 
 DESC=s3-config-baseline
 JOB_NAME=s2-compCar-baseline
