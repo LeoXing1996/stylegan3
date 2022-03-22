@@ -523,6 +523,8 @@ def training_loop(
         if (not done) and (abort_fn is not None) and abort_fn():
             done = True
             if rank == 0:
+                if slurm:
+                    stats_tfevents.close()
                 print()
                 print('Aborting...')
 
@@ -650,6 +652,8 @@ def training_loop(
 
     # Done.
     if rank == 0:
+        if slurm:
+            stats_tfevents.close()
         print()
         print('Exiting...')
         with open(os.path.join(run_dir, 'timer.txt'), 'w') as file:
