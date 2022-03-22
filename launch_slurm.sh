@@ -15,7 +15,6 @@ source ${VAR_FILE}
 
 WORK_DIR=./out
 
-PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
 srun -p ${PARTITION} \
     --job-name=${JOB_NAME} \
     --gres=gpu:${GPUS_PER_NODE} \
