@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-DESC="GIRAFFE-pretrain-Res32-ada"
+DESC="GIRAFFE-fromScratch-Res32-ada"
 JOB_NAME=s2-incident-baseline
 DATA=s3://data/IncidentCar1k256/
 
