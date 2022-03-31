@@ -8,4 +8,4 @@ CONFIG=stylegan2
 BATCH=32
 KIMG=57000
 
-PYTHON_ARGS="--aug noaug --gamma 10 --nerf_config=nerf_configs/car_pretrain_s2.yml"
+PYTHON_ARGS="--aug noaug --gamma 10 --nerf_config=nerf_configs/car_pretrain_nerf_s2.yml"
