@@ -8,4 +8,4 @@ CONFIG=stylegan2
 BATCH=32
 KIMG=57000
 
-PYTHON_ARGS="--mirror --gamma 10"
+PYTHON_ARGS="--mirror 1 --gamma 10"

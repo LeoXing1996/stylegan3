@@ -298,12 +298,16 @@ class PetrelDataset(Dataset):
         if len(self._image_fnames) == 0:
             raise IOError('No image files found in the specified path')
 
-        name = os.path.splitext(os.path.basename(self._path))[0]
+        name = self.get_name()
         raw_shape = [len(self._image_fnames)] + list(
             self._load_raw_image(0).shape)
         if resolution is not None:
             raw_shape[2] = raw_shape[3] = resolution
         super().__init__(name=name, raw_shape=raw_shape, **super_kwargs)
+
+    def get_name(self):
+        idx = -2 if self._path.endswith('/') else -1
+        return self._path.split('/')[idx]
 
     @staticmethod
     def _file_ext(fname):
