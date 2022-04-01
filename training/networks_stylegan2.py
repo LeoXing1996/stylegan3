@@ -854,7 +854,7 @@ class NeRFSynthesisNetwork(torch.nn.Module):
 
         return nerf
 
-    def forward(self, ws, **block_kwargs):
+    def forward(self, ws, nerf_kwargs=None, **block_kwargs):
         batch_size = ws.shape[0]
         block_ws = []
         with torch.autograd.profiler.record_function('split_ws'):
@@ -871,7 +871,9 @@ class NeRFSynthesisNetwork(torch.nn.Module):
                 w_idx += block.num_conv
 
         # forward nerf
-        nerf_feat = self.nerf(batch_size=batch_size)
+        if nerf_kwargs is None:
+            nerf_kwargs = dict()
+        nerf_feat = self.nerf(batch_size=batch_size, **nerf_kwargs)
 
         x, img = nerf_feat, None
         # for res, cur_ws in zip(self.block_resolutions, block_ws):
@@ -982,13 +984,15 @@ class Generator_with_NeRF(torch.nn.Module):
                 truncation_psi=1,
                 truncation_cutoff=None,
                 update_emas=False,
+                nerf_kwargs=None,
                 **synthesis_kwargs):
         ws = self.mapping(z,
                           c,
                           truncation_psi=truncation_psi,
                           truncation_cutoff=truncation_cutoff,
                           update_emas=update_emas)
-        img = self.synthesis(ws, update_emas=update_emas, **synthesis_kwargs)
+        img = self.synthesis(ws, update_emas=update_emas,
+                             nerf_kwargs=nerf_kwargs, **synthesis_kwargs)
         return img
 
 

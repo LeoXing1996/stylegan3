@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 DESC="GIRAFFE-fromScratch-Res32-ada"
-JOB_NAME=s2-incident-baseline
+JOB_NAME=s2-nerf-incident-fromScratch
 DATA=s3://data/IncidentCar1k256/
 
 CONFIG=stylegan2

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 DESC="GIRAFFE-pretrain-Res32-ada"
-JOB_NAME=s2-incident-baseline
+JOB_NAME=s2-nerf-incident-pretrain
 DATA=s3://data/IncidentCar1k256/
 
 CONFIG=stylegan2
