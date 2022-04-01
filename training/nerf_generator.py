@@ -5,11 +5,13 @@ import torch.nn.functional as F
 from numpy import pi
 from scipy.spatial.transform import Rotation as Rot
 
+from torch_utils import persistence
 from .nerf_util import (arange_pixels, get_camera_mat, get_camera_pose,
                         get_random_pose, image_points_to_world,
                         origin_to_world)
 
 
+@persistence.persistent_class
 class Generator(nn.Module):
     """GIRAFFE Generator Class. without neural render.
 
@@ -84,6 +86,7 @@ class Generator(nn.Module):
             self.bounding_box_generator = bounding_box_generator.to(device)
         else:
             self.bounding_box_generator = bounding_box_generator
+        self._scale = 1
 
     def forward(self,
                 batch_size=32,
@@ -444,6 +447,28 @@ class Generator(nn.Module):
         object_existance = object_existance.astype(np.bool)
         return object_existance
 
+    @property
+    def image_scale(self):
+        """OURS: This function return a random scale for zooming-in.
+        Returns:
+            sampled scale
+        """
+        if self._scale is None:
+            return [-1, 1]
+        scale_min = -1 * self._scale
+        scale_max = self._scale
+        scale_min_sel = np.random.random([scale_min, 0])
+        scale_max_sel = np.random.random([0, scale_max])
+        return [scale_min_sel, scale_max_sel]
+
+    def get_render_pixels(self, res, batch_size, device):
+        """OURS: This function return the pixels to be render
+        """
+        pixels = arange_pixels((res, res), batch_size,
+                               invert_y_axis=False)[1].to(device)
+
+        return pixels
+
     def volume_render_image(self,
                             latent_codes,
                             camera_matrices,
@@ -465,8 +490,7 @@ class Generator(nn.Module):
 
         # Arange Pixels
         # use [1] get scales_pixels
-        pixels = arange_pixels((res, res), batch_size,
-                               invert_y_axis=False)[1].to(device)
+        pixels = self.get_render_pixels(res, batch_size, device)
         # TODO: why we do this
         #   --> equals to set invert_y_axis=True in arange_pixels
         pixels[..., -1] *= -1.
@@ -583,6 +607,7 @@ class Generator(nn.Module):
             return feat_map
 
 
+@persistence.persistent_class
 class Decoder(nn.Module):
     """Decoder class.
 
@@ -764,6 +789,7 @@ def get_rotation_matrix(axis='z', value=0., batch_size=32):
     return r
 
 
+@persistence.persistent_class
 class BoundingBoxGenerator(nn.Module):
     """Bounding box generator class.
 
