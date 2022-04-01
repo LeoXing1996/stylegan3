@@ -301,7 +301,7 @@ def training_loop(
             if slurm:
                 from pavi import SummaryWriter as Writer
                 proj_name = run_dir.split('/')[-1]
-                stats_tfevents = Writer(proj_name, project='NeRF-GANs')
+                stats_tfevents = Writer(f'S3-{proj_name}', project='NeRF-GANs')
                 from mmcv.fileio import FileClient
                 client = FileClient('petrel', path_mapping=petrel_mapping)
             else:
