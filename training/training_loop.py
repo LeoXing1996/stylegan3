@@ -365,6 +365,7 @@ def training_loop(
     if progress_fn is not None:
         progress_fn(0, total_kimg)
 
+    best_fid, best_pickle_name = float('inf'), None
     data_time_log = []
     while True:
 
@@ -603,6 +604,35 @@ def training_loop(
                                               run_dir=run_dir,
                                               snapshot_pkl=snapshot_pkl)
                 stats_metrics.update(result_dict.results)
+
+                if 'fid50k_full' in result_dict.results and rank == 0:
+                    if result_dict.results.fid50k_full < best_fid:
+                        best_fid = result_dict.results.fid50k_full
+                        best_pickle_name_new = (f'network-bestFID-{best_fid}-'
+                                                f'{cur_nimg//1000:06d}.pkl')
+                        best_snapshot_pkl = os.path.join(run_dir,
+                                                         best_pickle_name_new)
+
+                        if client is not None:
+                            # 1. remove last best pickle
+                            if best_pickle_name:
+                                client.remove(
+                                    os.path.join(run_dir,
+                                                 best_pickle_name))
+                            # 2. update name and save new one
+                            with io.BytesIO() as f:
+                                pickle.dump(snapshot_data, f)
+                                client.put(f.getvalue(), best_snapshot_pkl)
+                        else:
+                            # 1. remove last best pickle
+                            if best_pickle_name:
+                                os.remove(os.path.join(run_dir,
+                                                       best_pickle_name))
+                            # 2. save new one
+                            with open(best_snapshot_pkl, 'wb') as f:
+                                pickle.dump(snapshot_data, f)
+                        best_pickle_name = best_pickle_name_new
+
         del snapshot_data  # conserve memory
 
         # Collect statistics.
