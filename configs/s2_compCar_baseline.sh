@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-DESC=config-e-baseline
+DESC=baseline
 JOB_NAME=s2-compCar-baseline
 DATA=s3://data/compCar256/
 
