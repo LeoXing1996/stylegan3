@@ -17,7 +17,6 @@ bbox_kwargs:
   scale_range_max: [0.25, 0.2, 0.2]
   translation_range_min: [-0.22, -0.12, 0.]
   translation_range_max: [0.22, 0.12, 0.]
-  rotation_range: [0.40278, 0.59722]
 resume_kwargs:
   path: "./nerf-pretrain/giraffe-car256-pretrain.pt"
   freeze: true
