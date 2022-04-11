@@ -7,5 +7,5 @@ DATA=s3://data/compCar256/
 
 CONFIG=stylegan2
 BATCH=32
-KIMG=57000
+KIMG=25000
 PYTHON_ARGS="--mirror --gamma 8.2"

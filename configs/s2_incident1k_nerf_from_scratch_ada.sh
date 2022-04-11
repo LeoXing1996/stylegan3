@@ -6,6 +6,6 @@ DATA=s3://data/IncidentCar1k256/
 
 CONFIG=stylegan2
 BATCH=32
-KIMG=57000
+KIMG=15000
 
 PYTHON_ARGS="--gamma 10 --nerf_config=nerf_configs/car_from_scratch_nerf_s2.yml"
