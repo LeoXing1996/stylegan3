@@ -5,3 +5,4 @@ data/
 .stignore
 nerf-pretrain/
 runs/
+vis_out/
