@@ -8,6 +8,7 @@
 """Main training loop."""
 
 import copy
+from distutils.sysconfig import get_makefile_filename
 import io
 import json
 import os
@@ -315,7 +316,7 @@ def training_loop(
     grid_size = None
     grid_z = None
     grid_c = None
-    vis_nerf_output = hasattr(G, 'nerf')
+    vis_nerf_output = hasattr(G.synthesis, 'nerf')
     if rank == 0:
         print('Exporting sample images...')
         grid_size, images, labels = setup_snapshot_image_grid(
@@ -328,28 +329,15 @@ def training_loop(
         grid_z = torch.randn([labels.shape[0], G.z_dim],
                              device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
-        if vis_nerf_output:
-            images, nerfs = [], []
-            for z, c in zip(grid_z, grid_c):
-                image, nerf = G_ema(z=z,
-                                    c=c,
-                                    noise_mode='const',
-                                    return_nerf=True)
-                images.append(image.cpu())
-                nerfs.append(nerf.cpu())
-            images = torch.cat(images + nerfs, dim=0)
-            g_grid_size = [grid_size[0], grid_size[1] * 2]
-        else:
-            images = torch.cat([
-                G_ema(z=z, c=c, noise_mode='const').cpu()
-                for z, c in zip(grid_z, grid_c)
-            ]).numpy()
-            g_grid_size = grid_size
+        images = torch.cat([
+            G_ema(z=z, c=c, noise_mode='const').cpu()
+            for z, c in zip(grid_z, grid_c)
+        ]).numpy()
 
         save_image_grid(images,
                         os.path.join(run_dir, 'fakes_init.png'),
                         drange=[-1, 1],
-                        grid_size=g_grid_size,
+                        grid_size=grid_size,
                         client=client)
 
     # Train.
@@ -472,9 +460,9 @@ def training_loop(
 
         # Perform maintenance tasks once per tick.
         done = (cur_nimg >= total_kimg * 1000)
-        if (not done) and (cur_tick != 0) and (
-                cur_nimg < tick_start_nimg + kimg_per_tick * 1000):
-            continue
+        # if (not done) and (cur_tick != 0) and (
+        #         cur_nimg < tick_start_nimg + kimg_per_tick * 1000):
+        #     continue
 
         # Print status line, accumulating the same information in training_stats.  # noqa
         tick_end_time = time.time()
@@ -533,27 +521,39 @@ def training_loop(
         # Save image snapshot.
         if (rank == 0) and (image_snapshot_ticks is not None) and (
                 done or cur_tick % image_snapshot_ticks == 0):
-            if vis_nerf_output:
-                images, nerfs = [], []
-                for z, c in zip(grid_z, grid_c):
-                    image, nerf = G_ema(z=z,
-                                        c=c,
-                                        noise_mode='const',
-                                        return_nerf=True)
-                    images.append(image.cpu())
-                    nerfs.append(nerf.cpu())
-                images = torch.cat(images + nerfs, dim=0)
-            else:
-                images = torch.cat([
-                    G_ema(z=z, c=c, noise_mode='const').cpu()
-                    for z, c in zip(grid_z, grid_c)
-                ]).numpy()
+            images = torch.cat([
+                G_ema(z=z, c=c, noise_mode='const').cpu()
+                for z, c in zip(grid_z, grid_c)
+            ]).numpy()
             save_image_grid(images,
                             os.path.join(run_dir,
                                          f'fakes{cur_nimg//1000:06d}.png'),
                             drange=[-1, 1],
-                            grid_size=g_grid_size,
+                            grid_size=grid_size,
                             client=client)
+            if vis_nerf_output:
+                # set a front camera matrix
+                camera_matrices = G_ema.synthesis.nerf.get_camera(
+                    val_v=0., batch_size=z.size(0))
+                transformations = G_ema.synthesis.nerf.get_transformations(
+                    batch_size=z.size(0))
+
+                nerf_kwargs = dict(camera_matrices=camera_matrices,
+                                   transformations=transformations)
+                images = torch.cat([
+                    G_ema(z=z,
+                          c=c,
+                          nerf_kwargs=nerf_kwargs,
+                          noise_mode='const').cpu()
+                    for z, c in zip(grid_z, grid_c)
+                ]).numpy()
+                save_image_grid(images,
+                                os.path.join(
+                                    run_dir,
+                                    f'fakes_norm_{cur_nimg//1000:06d}.png'),
+                                drange=[-1, 1],
+                                grid_size=grid_size,
+                                client=client)
 
         # Save network snapshot.
         snapshot_pkl = None
@@ -610,15 +610,14 @@ def training_loop(
                         best_fid = result_dict.results.fid50k_full
                         best_pickle_name_new = (f'network-bestFID-{best_fid}-'
                                                 f'{cur_nimg//1000:06d}.pkl')
-                        best_snapshot_pkl = os.path.join(run_dir,
-                                                         best_pickle_name_new)
+                        best_snapshot_pkl = os.path.join(
+                            run_dir, best_pickle_name_new)
 
                         if client is not None:
                             # 1. remove last best pickle
                             if best_pickle_name:
                                 client.remove(
-                                    os.path.join(run_dir,
-                                                 best_pickle_name))
+                                    os.path.join(run_dir, best_pickle_name))
                             # 2. update name and save new one
                             with io.BytesIO() as f:
                                 pickle.dump(snapshot_data, f)
@@ -626,12 +625,24 @@ def training_loop(
                         else:
                             # 1. remove last best pickle
                             if best_pickle_name:
-                                os.remove(os.path.join(run_dir,
-                                                       best_pickle_name))
+                                os.remove(
+                                    os.path.join(run_dir, best_pickle_name))
                             # 2. save new one
                             with open(best_snapshot_pkl, 'wb') as f:
                                 pickle.dump(snapshot_data, f)
                         best_pickle_name = best_pickle_name_new
+
+                # let's upload the logs to ceph~
+                if rank == 0 and client is not None:
+                    log_suffix = ('.txt', '.jsonl', 'yaml')
+                    for entry in os.scandir(run_dir):
+                        if not entry.is_file():
+                            continue
+                        local_path = entry.path
+                        if not local_path.endswith(log_suffix):
+                            continue
+                        with open(local_path, 'r') as file:
+                            client.put_text(file.read(), local_path)
 
         del snapshot_data  # conserve memory
 
