@@ -7,6 +7,7 @@ import imageio
 import numpy as np
 import torch
 import yaml
+from PIL import Image
 from torchvision.utils import make_grid
 
 import dnnlib
@@ -38,6 +39,9 @@ class NeRFRenderer(object):
 
         self.sample_tmp = 0.65  # TODO: what's this?
 
+    def set_seed(self, seed):
+        self.seed = seed
+
     @staticmethod
     def norm_output(out, drange=[-1, 1]):
         lo, hi = drange
@@ -68,33 +72,44 @@ class NeRFRenderer(object):
         bg_rotation = nerf.get_random_bg_rotation(batch_size)
         camera_matrices = nerf.get_camera(val_v=0., batch_size=batch_size)
 
+        # s = [
+        #     [-1., -1., -1.],
+        #     [-1., -1., -1.],
+        #     [-1., -1., -1.],
+        #     [-1., -1., -1.],
+        #     [-1., -1., -1.],
+        #     [-1., -1., -1.],
+        # ]
+
+        # t = [
+        #     [-0.7, -.8, 0.],
+        #     [-0.7, 0.5, 0.],
+        #     [-0.7, 1.8, 0.],
+        #     [1.5, -.8, 0.],
+        #     [1.5, 0.5, 0.],
+        #     [1.5, 1.8, 0.],
+        # ]
+        # r = [
+        #     0.5,
+        #     0.5,
+        #     0.5,
+        #     0.5,
+        #     0.5,
+        #     0.5,
+        # ]
+
+        # some hard-code rendering params
         s = [
             [-1., -1., -1.],
             [-1., -1., -1.],
-            [-1., -1., -1.],
-            [-1., -1., -1.],
-            [-1., -1., -1.],
-            [-1., -1., -1.],
         ]
-
         t = [
-            [-0.7, -.8, 0.],
-            [-0.7, 0.5, 0.],
-            [-0.7, 1.8, 0.],
-            [1.5, -.8, 0.],
+            [-1.5, 0.5, 0.],
             [1.5, 0.5, 0.],
-            [1.5, 1.8, 0.],
         ]
-        r = [
-            0.5,
-            0.5,
-            0.5,
-            0.5,
-            0.5,
-            0.5,
-        ]
+        r = [0.5, 0.25]
         outs = []
-        for i in range(1, 7):
+        for i in range(1, 3):
             transformations = nerf.get_transformations(s[:i], t[:i], r[:i],
                                                        batch_size)
             latent_codes = [
@@ -112,13 +127,11 @@ class NeRFRenderer(object):
 
             outs.append(out)
         outs = torch.stack(outs)
-        idx = torch.arange(6).reshape(-1, 1).repeat(1, (128 // 6)).reshape(-1)
+        idx = torch.arange(2).reshape(-1, 1).repeat(1, (128 // 6)).reshape(-1)
         outs = outs[[idx]]
 
-        save_root = osp.join(self.root, 'render_add_cars')
-        os.makedirs(save_root, exist_ok=True)
-        save_path = osp.join(save_root, f'{self.seed}.mp4')
-        self.save_video(save_path, outs)
+        save_root = osp.join(self.root, 'render_add_cars_norm')
+        self.save_video(save_root, outs, save_imgs=True)
 
     def render_object_rotation(self, batch_size=15, n_steps=32):
         nerf = self.nerf
@@ -171,9 +184,7 @@ class NeRFRenderer(object):
         out = torch.stack(out)
 
         save_root = osp.join(self.root, 'rotation_object')
-        os.makedirs(save_root, exist_ok=True)
-        save_path = osp.join(save_root, f'{self.seed}.mp4')
-        self.save_video(save_path, out)
+        self.save_video(save_root, out, save_imgs=True)
 
     def render_interplolation_bg(self,
                                  batch_size=15,
@@ -232,9 +243,7 @@ class NeRFRenderer(object):
         out = torch.stack(out)
 
         save_root = osp.join(self.root, f'interpolation_bg_{mode}')
-        os.makedirs(save_root, exist_ok=True)
-        save_path = osp.join(save_root, f'{self.seed}.mp4')
-        self.save_video(save_path, out)
+        self.save_video(save_root, out, save_imgs=True)
 
     def render_object_translation_horizontal(self, batch_size=15, n_steps=32):
         nerf = self.nerf
@@ -274,17 +283,30 @@ class NeRFRenderer(object):
         out = torch.stack(out)
 
         save_root = osp.join(self.root, 'translation_horizontal')
-        os.makedirs(save_root, exist_ok=True)
-        save_path = osp.join(save_root, f'{self.seed}.mp4')
-        self.save_video(save_path, out)
+        self.save_video(save_root, out, save_imgs=True)
 
-    @staticmethod
-    def save_video(out_file,
+    def save_video(self,
+                   save_root,
                    img_list,
                    n_row=5,
                    add_reverse=False,
                    save_imgs=False):
-        n_steps, batch_size = img_list.shape[:2]
+
+        os.makedirs(save_root, exist_ok=True)
+
+        if save_imgs:
+            img_root = osp.join(save_root, str(self.seed))
+            os.makedirs(img_root, exist_ok=True)
+
+            for idx_frame, img_frame in enumerate(img_list):
+                for idx, img in enumerate(img_frame):
+                    img_name = f'{idx:0>4d}_{idx_frame:0>4d}.png'
+                    img_path = osp.join(img_root, img_name)
+                    Image.fromarray(
+                        img.permute(1, 2, 0).cpu().numpy().astype(
+                            np.uint8)).save(img_path)
+
+        _, batch_size = img_list.shape[:2]
         nrow = n_row if (n_row is not None) else int(sqrt(batch_size))
         img = [
             (make_grid(img, nrow=nrow,
@@ -295,10 +317,10 @@ class NeRFRenderer(object):
         if add_reverse:
             img += list(reversed(img))
 
-        # if save_imgs:
-        #     for idx in range():
-        #         pass
-        imageio.mimwrite(out_file, img, fps=30, quality=8)
+        imageio.mimwrite(osp.join(save_root, f'{self.seed}.mp4'),
+                         img,
+                         fps=30,
+                         quality=8)
 
 
 def get_args():
@@ -354,11 +376,17 @@ def main():
         misc.copy_params_and_buffers(resume_data['G_ema'], G)
 
     renderer = NeRFRenderer(G.cuda())
-    # renderer.render_add_cars(batch_size=5)
-    # renderer.render_object_rotation(batch_size=20)
-    # renderer.render_interplolation_bg(batch_size=20, mode='app')
-    # renderer.render_interplolation_bg(batch_size=20, mode='shape')
-    renderer.render_object_translation_horizontal(batch_size=5)
+
+    for seed in [
+            42, 29, 23421, 89, 100, 2021, 2022, 2023, 1207, 910, 210, 103
+    ]:
+        renderer.set_seed(seed)
+        renderer.render_add_cars(batch_size=10)
+        renderer.render_object_rotation(batch_size=20)
+        renderer.render_interplolation_bg(batch_size=20, mode='app')
+        renderer.render_interplolation_bg(batch_size=20, mode='shape')
+        renderer.render_object_translation_horizontal(batch_size=5)
+        # break
 
 
 if __name__ == '__main__':
