@@ -157,26 +157,26 @@ def training_loop(
     # Load training set.
     if rank == 0:
         print('Loading training set...')
-    t1 = time.time()
+    # t1 = time.time()
     training_set = dnnlib.util.construct_class_by_name(
         **training_set_kwargs)  # subclass of training.dataset.Dataset
-    t2 = time.time()
+    # t2 = time.time()
     training_set_sampler = misc.InfiniteSampler(dataset=training_set,
                                                 rank=rank,
                                                 num_replicas=num_gpus,
                                                 seed=random_seed)
-    t3 = time.time()
+    # t3 = time.time()
     training_set_iterator = iter(
         torch.utils.data.DataLoader(dataset=training_set,
                                     sampler=training_set_sampler,
                                     batch_size=batch_size // num_gpus,
                                     **data_loader_kwargs))
-    t4 = time.time()
+    # t4 = time.time()
 
-    if rank == 0:
-        print(f'construct dataset: {t2-t1}')
-        print(f'construct sampler: {t3-t2}')
-        print(f'construct dataloader: {t4-t3}')
+    # if rank == 0:
+    #     print(f'construct dataset: {t2-t1}')
+    #     print(f'construct sampler: {t3-t2}')
+    #     print(f'construct dataloader: {t4-t3}')
 
     if rank == 0:
         print()
@@ -203,12 +203,20 @@ def training_loop(
     # Resume from existing pickle.
     if (resume_pkl is not None) and (rank == 0):
         print(f'Resuming from "{resume_pkl}"')
-        with dnnlib.util.open_url(resume_pkl) as f:
-            resume_data = legacy.load_network_pkl(f)
-        for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
-            misc.copy_params_and_buffers(resume_data[name],
-                                         module,
-                                         require_all=False)
+        if resume_pkl.endswith('pkl'):
+            with dnnlib.util.open_url(resume_pkl) as f:
+                resume_data = legacy.load_network_pkl(f)
+            for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
+                misc.copy_params_and_buffers(resume_data[name],
+                                             module,
+                                             require_all=False)
+        else:
+            assert resume_pkl.endswith('pt'), (
+                'Only support \'pt\' or \'pkl\'.')
+            # NOTE: here value in `state` are nn.Module.
+            state = torch.load(resume_pkl, map_location='cpu')
+            for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
+                module.load_state_dict(state[name].state_dict())
 
     # Print network summary tables.
     if rank == 0:
@@ -353,15 +361,15 @@ def training_loop(
         progress_fn(0, total_kimg)
 
     best_fid, best_pickle_name = float('inf'), None
-    data_time_log = []
+    # data_time_log = []
     while True:
 
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
-            s_t = time.time()
+            # s_t = time.time()
             phase_real_img, phase_real_c = next(training_set_iterator)
-            e_t = time.time()
-            data_time_log.append(e_t - s_t)
+            # e_t = time.time()
+            # data_time_log.append(e_t - s_t)
 
             phase_real_img = (
                 phase_real_img.to(device).to(torch.float32) / 127.5 -
@@ -481,9 +489,9 @@ def training_loop(
         fields += [
             f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"  # noqa
         ]
-        fields += [
-            f"data_time {training_stats.report0('Timing/data_time', data_time_log[-1]):6.4f}"  # noqa
-        ]
+        # fields += [
+        #     f"data_time {training_stats.report0('Timing/data_time', data_time_log[-1]):6.4f}"  # noqa
+        # ]
         fields += [
             f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"  # noqa
         ]
@@ -702,12 +710,12 @@ def training_loop(
             stats_tfevents.close()
         print()
         print('Exiting...')
-        with open(os.path.join(run_dir, 'timer.txt'), 'w') as file:
-            total_time = f'Total Time: {time.time() - start_time}\n'
-            data_time_np = np.array(data_time_log).mean()
-            data_time_ = f'Data Time:  {data_time_np:.5f}\n'
-            file.write(total_time)
-            file.write(data_time_)
+        # with open(os.path.join(run_dir, 'timer.txt'), 'w') as file:
+        #     total_time = f'Total Time: {time.time() - start_time}\n'
+        #     data_time_np = np.array(data_time_log).mean()
+        #     data_time_ = f'Data Time:  {data_time_np:.5f}\n'
+        #     file.write(total_time)
+        #     file.write(data_time_)
 
 
 # ---------------------------------------------------------------------------

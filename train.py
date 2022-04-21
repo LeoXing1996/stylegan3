@@ -48,7 +48,7 @@ def subprocess_fn(rank, c, temp_dir):
                                                  world_size=c.num_gpus)
 
     # Init torch_utils.
-    print(rank)
+    # print(rank)
     sync_device = torch.device('cuda', rank) if c.num_gpus > 1 else None
     training_stats.init_multiprocessing(rank=rank, sync_device=sync_device)
     if rank != 0:
