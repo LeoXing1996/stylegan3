@@ -8,11 +8,10 @@
 """Main training loop."""
 
 import copy
-from distutils.sysconfig import get_makefile_filename
 import io
 import json
 import os
-import pickle
+# import pickle
 import time
 
 import numpy as np
@@ -556,7 +555,7 @@ def training_loop(
                                 client=client)
 
         # Save network snapshot.
-        snapshot_pkl = None
+        snapshot_pt = None
         snapshot_data = None
         if (network_snapshot_ticks
                 is not None) and (done
@@ -575,17 +574,20 @@ def training_loop(
                         for param in misc.params_and_buffers(value):
                             torch.distributed.broadcast(param, src=0)
                     snapshot_data[key] = value.cpu()
+
                 del value  # conserve memory
-            snapshot_pkl = os.path.join(
-                run_dir, f'network-snapshot-{cur_nimg//1000:06d}.pkl')
+            snapshot_pt = os.path.join(
+                run_dir, f'network-snapshot-{cur_nimg//1000:06d}.pt')
             if rank == 0:
                 if client is not None:
                     with io.BytesIO() as f:
-                        pickle.dump(snapshot_data, f)
-                        client.put(f.getvalue(), snapshot_pkl)
+                        torch.save(snapshot_data, f)
+                        # pickle.dump(snapshot_data, f)
+                        client.put(f.getvalue(), snapshot_pt)
                 else:
-                    with open(snapshot_pkl, 'wb') as f:
-                        pickle.dump(snapshot_data, f)
+                    torch.save(snapshot_data, snapshot_pt)
+                    # with open(snapshot_pt, 'wb') as f:
+                    #     pickle.dump(snapshot_data, f)
 
         # Evaluate metrics.
         if (snapshot_data is not None) and (len(metrics) > 0):
@@ -602,14 +604,14 @@ def training_loop(
                 if rank == 0:
                     metric_main.report_metric(result_dict,
                                               run_dir=run_dir,
-                                              snapshot_pkl=snapshot_pkl)
+                                              snapshot_pkl=snapshot_pt)
                 stats_metrics.update(result_dict.results)
 
                 if 'fid50k_full' in result_dict.results and rank == 0:
                     if result_dict.results.fid50k_full < best_fid:
                         best_fid = result_dict.results.fid50k_full
                         best_pickle_name_new = (f'network-bestFID-{best_fid}-'
-                                                f'{cur_nimg//1000:06d}.pkl')
+                                                f'{cur_nimg//1000:06d}.pt')
                         best_snapshot_pkl = os.path.join(
                             run_dir, best_pickle_name_new)
 
@@ -620,7 +622,8 @@ def training_loop(
                                     os.path.join(run_dir, best_pickle_name))
                             # 2. update name and save new one
                             with io.BytesIO() as f:
-                                pickle.dump(snapshot_data, f)
+                                torch.save(snapshot_data, f)
+                                # pickle.dump(snapshot_data, f)
                                 client.put(f.getvalue(), best_snapshot_pkl)
                         else:
                             # 1. remove last best pickle
@@ -628,8 +631,9 @@ def training_loop(
                                 os.remove(
                                     os.path.join(run_dir, best_pickle_name))
                             # 2. save new one
-                            with open(best_snapshot_pkl, 'wb') as f:
-                                pickle.dump(snapshot_data, f)
+                            torch.save(snapshot_data, snapshot_pt)
+                            # with open(best_snapshot_pkl, 'wb') as f:
+                            #     pickle.dump(snapshot_data, f)
                         best_pickle_name = best_pickle_name_new
 
                 # let's upload the logs to ceph~

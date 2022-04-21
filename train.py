@@ -415,7 +415,7 @@ def parse_comma_separated_list(s):
               help='The config for nerf generator.')
 @click.option('--bucket',
               is_flag=False,
-              default='s3://mmgen-dev/NeRF-GAN/StyleGAN/',
+              default='sh34:s3://NeRF-GAN/StyleGAN/',
               help='The bucket on petrel to save results.')
 def main(**kwargs):
     """Train a GAN using the techniques described in the paper "Alias-Free

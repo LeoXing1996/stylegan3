@@ -14,7 +14,7 @@ import numpy as np
 import torch
 from torch import distributed
 from torch_utils import misc
-from torch_utils import persistence
+# from torch_utils import persistence
 from torch_utils.ops import conv2d_resample
 from torch_utils.ops import upfirdn2d
 from torch_utils.ops import bias_act
@@ -122,7 +122,7 @@ def modulated_conv2d(
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class FullyConnectedLayer(torch.nn.Module):
 
     def __init__(
@@ -169,7 +169,7 @@ class FullyConnectedLayer(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class Conv2dLayer(torch.nn.Module):
 
     def __init__(
@@ -247,7 +247,7 @@ class Conv2dLayer(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class MappingNetwork(torch.nn.Module):
 
     def __init__(
@@ -354,7 +354,7 @@ class MappingNetwork(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class SynthesisLayer(torch.nn.Module):
 
     def __init__(
@@ -444,7 +444,7 @@ class SynthesisLayer(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class ToRGBLayer(torch.nn.Module):
 
     def __init__(self,
@@ -486,7 +486,7 @@ class ToRGBLayer(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class SynthesisBlock(torch.nn.Module):
 
     def __init__(
@@ -658,7 +658,7 @@ class SynthesisBlock(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class SynthesisNetwork(torch.nn.Module):
 
     def __init__(
@@ -735,7 +735,7 @@ class SynthesisNetwork(torch.nn.Module):
         ])
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class NeRFSynthesisNetwork(torch.nn.Module):
 
     def __init__(
@@ -888,7 +888,7 @@ class NeRFSynthesisNetwork(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class Generator(torch.nn.Module):
 
     def __init__(
@@ -937,7 +937,7 @@ class Generator(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class Generator_with_NeRF(torch.nn.Module):
 
     def __init__(
@@ -999,7 +999,7 @@ class Generator_with_NeRF(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class DiscriminatorBlock(torch.nn.Module):
 
     def __init__(
@@ -1134,7 +1134,7 @@ class DiscriminatorBlock(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class MinibatchStdLayer(torch.nn.Module):
 
     def __init__(self, group_size, num_channels=1):
@@ -1176,7 +1176,7 @@ class MinibatchStdLayer(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class DiscriminatorEpilogue(torch.nn.Module):
 
     def __init__(
@@ -1266,7 +1266,7 @@ class DiscriminatorEpilogue(torch.nn.Module):
 # ----------------------------------------------------------------------------
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class Discriminator(torch.nn.Module):
 
     def __init__(

@@ -5,13 +5,13 @@ import torch.nn.functional as F
 from numpy import pi
 from scipy.spatial.transform import Rotation as Rot
 
-from torch_utils import persistence
+# from torch_utils import persistence
 from .nerf_util import (arange_pixels, get_camera_mat, get_camera_pose,
                         get_random_pose, image_points_to_world,
                         origin_to_world)
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class Generator(nn.Module):
     """GIRAFFE Generator Class. without neural render.
 
@@ -607,7 +607,7 @@ class Generator(nn.Module):
             return feat_map
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class Decoder(nn.Module):
     """Decoder class.
 
@@ -706,6 +706,9 @@ class Decoder(nn.Module):
                 for i in range(n_blocks_view - 1)
             ])
 
+        # add a fucking module
+        self.fuck = nn.Conv2d(1, 1, 1)
+
     def transform_points(self, p, views=False):
         # Positional encoding
         # normalize p between [-1, 1]
@@ -789,7 +792,7 @@ def get_rotation_matrix(axis='z', value=0., batch_size=32):
     return r
 
 
-@persistence.persistent_class
+# @persistence.persistent_class
 class BoundingBoxGenerator(nn.Module):
     """Bounding box generator class.
 
