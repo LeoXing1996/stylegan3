@@ -158,27 +158,17 @@ def training_loop(
     # Load training set.
     if rank == 0:
         print('Loading training set...')
-    # t1 = time.time()
     training_set = dnnlib.util.construct_class_by_name(
         **training_set_kwargs)  # subclass of training.dataset.Dataset
-    # t2 = time.time()
     training_set_sampler = misc.InfiniteSampler(dataset=training_set,
                                                 rank=rank,
                                                 num_replicas=num_gpus,
                                                 seed=random_seed)
-    # t3 = time.time()
     training_set_iterator = iter(
         torch.utils.data.DataLoader(dataset=training_set,
                                     sampler=training_set_sampler,
                                     batch_size=batch_size // num_gpus,
                                     **data_loader_kwargs))
-    # t4 = time.time()
-
-    # if rank == 0:
-    #     print(f'construct dataset: {t2-t1}')
-    #     print(f'construct sampler: {t3-t2}')
-    #     print(f'construct dataloader: {t4-t3}')
-
     if rank == 0:
         print()
         print('Num images: ', len(training_set))
@@ -342,7 +332,7 @@ def training_loop(
                                     interval=reg_interval)
                 ]
 
-    for phase in phases:
+    for phase in phases + phase_fg:
         phase.start_event = None
         phase.end_event = None
         if rank == 0:
@@ -382,24 +372,24 @@ def training_loop(
         print('Exporting sample images...')
         grid_size, images, labels = setup_snapshot_image_grid(
             training_set=training_set)
-        save_image_grid(images,
-                        os.path.join(run_dir, 'reals.png'),
-                        drange=[0, 255],
-                        grid_size=grid_size,
-                        client=client)
+        # save_image_grid(images,
+        #                 os.path.join(run_dir, 'reals.png'),
+        #                 drange=[0, 255],
+        #                 grid_size=grid_size,
+        #                 client=client)
         grid_z = torch.randn([labels.shape[0], G.z_dim],
                              device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
-        images = torch.cat([
-            G_ema(z=z, c=c, noise_mode='const').cpu()
-            for z, c in zip(grid_z, grid_c)
-        ]).numpy()
+        # images = torch.cat([
+        #     G_ema(z=z, c=c, noise_mode='const').cpu()
+        #     for z, c in zip(grid_z, grid_c)
+        # ]).numpy()
 
-        save_image_grid(images,
-                        os.path.join(run_dir, 'fakes_init.png'),
-                        drange=[-1, 1],
-                        grid_size=grid_size,
-                        client=client)
+        # save_image_grid(images,
+        #                 os.path.join(run_dir, 'fakes_init.png'),
+        #                 drange=[-1, 1],
+        #                 grid_size=grid_size,
+        #                 client=client)
 
     # Train.
     if rank == 0:
@@ -420,10 +410,7 @@ def training_loop(
 
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
-            # s_t = time.time()
             phase_real_img, phase_real_c = next(training_set_iterator)
-            # e_t = time.time()
-            # data_time_log.append(e_t - s_t)
 
             phase_real_img = (
                 phase_real_img.to(device).to(torch.float32) / 127.5 -
@@ -660,9 +647,9 @@ def training_loop(
                           nerf_kwargs=dict(not_render_background=True)).cpu()
                     for z, c in zip(grid_z, grid_c)
                 ]).numpy()
+                fg_img_name = f'fakes{cur_nimg//1000:06d}_fg.png'
                 save_image_grid(images,
-                                os.path.join(run_dir,
-                                            f'fakes{cur_nimg//1000:06d}_fg.png'),
+                                os.path.join(run_dir, fg_img_name),
                                 drange=[-1, 1],
                                 grid_size=grid_size,
                                 client=client)
@@ -719,12 +706,9 @@ def training_loop(
                 if client is not None:
                     with io.BytesIO() as f:
                         torch.save(snapshot_data, f)
-                        # pickle.dump(snapshot_data, f)
                         client.put(f.getvalue(), snapshot_pt)
                 else:
                     torch.save(snapshot_data, snapshot_pt)
-                    # with open(snapshot_pt, 'wb') as f:
-                    #     pickle.dump(snapshot_data, f)
 
         # Evaluate metrics.
         if (snapshot_data is not None) and (len(metrics) > 0):
