@@ -36,6 +36,7 @@ class Generator(nn.Module):
         use_max_composition (bool): whether to use the max
             composition operator instead
     """
+
     def __init__(
             self,
             device,
@@ -337,6 +338,28 @@ class Generator(nn.Module):
                 0, 2, 1) / bb_s[:, box_idx].unsqueeze(1) * scale_factor
         return p_box
 
+    def transform_edge_to_box(self,
+                              transformations,
+                              box_idx=0,
+                              scale_factor=1.):
+        """NOTE: code add by us TODO: what is the true bbox?
+        bbox -> plane_to_camera -> camera_to_world -> transformation ?
+
+        """
+        bb_s, bb_t, bb_R = transformations
+
+        edge_list = [[1, 0, 0, 0], [-1, 0, 0, 0], [0, 1, 0, 0], [0, -1, 0, 0]]
+        edge_new = []
+        for edge in edge_list:
+            edge_ = torch.eye(4)[None, ...]
+            edge_[:, 4] = edge
+            edge_new_ = (bb_R[:, box_idx] @ (
+                edge_ - bb_t[:, box_idx].unsqueeze(1)).permute(
+                    0, 2, 1)).permute(
+                        0, 2, 1) / bb_s[:, box_idx].unsqueeze(1) * scale_factor
+            pass
+        pass
+
     def get_evaluation_points_bg(self, pixels_world, camera_world, di,
                                  rotation_matrix):
         batch_size = pixels_world.shape[0]
@@ -478,7 +501,11 @@ class Generator(nn.Module):
                             it=0,
                             return_alpha_map=False,
                             not_render_background=False,
-                            only_render_background=False):
+                            only_render_background=False,
+                            bbox_clip=False):
+        """
+        bbox_clip: args add by us, remove all feature out of the bbox
+        """
         res = self.resolution_vol
         device = self.device
         n_steps = self.n_ray_samples
@@ -532,11 +559,18 @@ class Generator(nn.Module):
                     # As done in NeRF, add noise during training
                     sigma_i += torch.randn_like(sigma_i)
 
-                # Mask out values outside
+                # Mask out values outside ---> image level
                 padd = 0.1
                 mask_box = torch.all(p_i <= 1. + padd, dim=-1) & torch.all(
                     p_i >= -1. - padd, dim=-1)
                 sigma_i[mask_box == 0] = 0.
+
+                # Mask out values outside ---> bbox level
+                # if bbox_clip:
+                #     bbox_range = torch.eye(4)[None, ...]
+                #     bbox_range[:, -1] = []
+                #     mask_box = None
+                #     sigma_i[mask_box == 0] = 0.
 
                 # Reshape
                 sigma_i = sigma_i.reshape(batch_size, n_points, n_steps)
@@ -636,6 +670,7 @@ class Decoder(nn.Module):
             viewing direction)
         gauss_std (int): std for Gauss. positional encoding
     """
+
     def __init__(self,
                  hidden_size=128,
                  n_blocks=8,
@@ -813,6 +848,7 @@ class BoundingBoxGenerator(nn.Module):
         prior_npz_file (str): path to prior npz file (used for clevr) to sample
             locations from
     """
+
     def __init__(self,
                  n_boxes=1,
                  scale_range_min=[0.5, 0.5, 0.5],

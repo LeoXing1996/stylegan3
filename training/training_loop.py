@@ -141,6 +141,7 @@ def training_loop(
         bucket=None,  # the bucket (or root dir) on petrel
         petrel_dir=None,  # the absolute path on petrel
         petrel_mapping=None,  # the mapping dict for petrel client
+        train_fg=False,  # train fg-model
 ):
 
     # Initialize.
@@ -200,6 +201,11 @@ def training_loop(
             device)  # subclass of torch.nn.Module
     G_ema = copy.deepcopy(G).eval()
 
+    if train_fg:
+        D_obj = dnnlib.util.construct_class_by_name(
+            **D_kwargs, **common_kwargs).train().requires_grad_(False).to(
+                device)  # subclass of torch.nn.Module
+
     # Resume from existing pickle.
     if (resume_pkl is not None) and (rank == 0):
         print(f'Resuming from "{resume_pkl}"')
@@ -253,7 +259,16 @@ def training_loop(
     loss = dnnlib.util.construct_class_by_name(
         device=device, G=G, D=D, augment_pipe=augment_pipe,
         **loss_kwargs)  # subclass of training.loss.Loss
-    phases = []
+
+    if train_fg:
+        loss_fg = dnnlib.util.construct_class_by_name(
+            device=device,
+            G=G,
+            D=D_obj,
+            augment_pipe=augment_pipe,
+            **loss_kwargs)  # subclass of training.loss.Loss
+
+    phases, phase_fg = [], []
     for name, module, opt_kwargs, reg_interval in [
         ('G', G, G_opt_kwargs, G_reg_interval),
         ('D', D, D_opt_kwargs, D_reg_interval)
@@ -288,6 +303,45 @@ def training_loop(
                                 opt=opt,
                                 interval=reg_interval)
             ]
+
+    if train_fg:
+        for name, module, opt_kwargs, reg_interval in [
+            ('G', G, G_opt_kwargs, G_reg_interval),
+            ('D', D_obj, D_opt_kwargs, D_reg_interval)
+        ]:
+            if reg_interval:
+                opt = dnnlib.util.construct_class_by_name(
+                    params=module.parameters(),
+                    **opt_kwargs)  # subclass of torch.optim.Optimizer
+                phase_fg += [
+                    dnnlib.EasyDict(name=name + 'both',
+                                    module=module,
+                                    opt=opt,
+                                    interval=1)
+                ]
+            else:  # Lazy regularization.
+                mb_ratio = reg_interval / (reg_interval + 1)
+                opt_kwargs = dnnlib.EasyDict(opt_kwargs)
+                opt_kwargs.lr = opt_kwargs.lr * mb_ratio
+                opt_kwargs.betas = [
+                    beta**mb_ratio for beta in opt_kwargs.betas
+                ]
+                opt = dnnlib.util.construct_class_by_name(
+                    module.parameters(),
+                    **opt_kwargs)  # subclass of torch.optim.Optimizer
+                phase_fg += [
+                    dnnlib.EasyDict(name=name + 'main',
+                                    module=module,
+                                    opt=opt,
+                                    interval=1)
+                ]
+                phase_fg += [
+                    dnnlib.EasyDict(name=name + 'reg',
+                                    module=module,
+                                    opt=opt,
+                                    interval=reg_interval)
+                ]
+
     for phase in phases:
         phase.start_event = None
         phase.end_event = None
@@ -442,6 +496,68 @@ def training_loop(
             if phase.end_event is not None:
                 phase.end_event.record(torch.cuda.current_stream(device))
 
+        # >>> apply update in foreground >>> start
+        if train_fg:
+            # Fetch training data.
+            with torch.autograd.profiler.record_function('data_fetch_obj'):
+                phase_real_obj, phase_real_c = next(training_set_iterator)
+
+                phase_real_obj = (
+                    phase_real_obj.to(device).to(torch.float32) / 127.5 -
+                    1).split(batch_gpu)
+                phase_real_c = phase_real_c.to(device).split(batch_gpu)
+
+            # Execute training phases.
+            for phase, phase_gen_z, phase_gen_c in zip(phase_fg, all_gen_z,
+                                                       all_gen_c):
+                if batch_idx % phase.interval != 0:
+                    continue
+                if phase.start_event is not None:
+                    phase.start_event.record(torch.cuda.current_stream(device))
+
+                # Accumulate gradients.
+                phase.opt.zero_grad(set_to_none=True)
+                phase.module.requires_grad_(True)
+                for real_img, real_c, gen_z, gen_c in zip(
+                        phase_real_obj, phase_real_c, phase_gen_z,
+                        phase_gen_c):
+                    loss_fg.accumulate_gradients(phase=phase.name,
+                                                 real_img=real_img,
+                                                 real_c=real_c,
+                                                 gen_z=gen_z,
+                                                 gen_c=gen_c,
+                                                 gain=phase.interval,
+                                                 cur_nimg=cur_nimg)
+                phase.module.requires_grad_(False)
+
+                # Update weights.
+                with torch.autograd.profiler.record_function(phase.name +
+                                                             '_obj_opt'):
+                    params = [
+                        param for param in phase.module.parameters()
+                        if param.grad is not None
+                    ]
+                    if len(params) > 0:
+                        flat = torch.cat(
+                            [param.grad.flatten() for param in params])
+                        if num_gpus > 1:
+                            torch.distributed.all_reduce(flat)
+                            flat /= num_gpus
+                        misc.nan_to_num(flat,
+                                        nan=0,
+                                        posinf=1e5,
+                                        neginf=-1e5,
+                                        out=flat)
+                        grads = flat.split([param.numel() for param in params])
+                        for param, grad in zip(params, grads):
+                            param.grad = grad.reshape(param.shape)
+                    phase.opt.step()
+
+                # Phase done.
+                if phase.end_event is not None:
+                    phase.end_event.record(torch.cuda.current_stream(device))
+        # <<< apply update in foreground <<< end
+
         # Update G_ema.
         with torch.autograd.profiler.record_function('Gema'):
             ema_nimg = ema_kimg * 1000
@@ -489,9 +605,6 @@ def training_loop(
         fields += [
             f"sec/kimg {training_stats.report0('Timing/sec_per_kimg', (tick_end_time - tick_start_time) / (cur_nimg - tick_start_nimg) * 1e3):<7.2f}"  # noqa
         ]
-        # fields += [
-        #     f"data_time {training_stats.report0('Timing/data_time', data_time_log[-1]):6.4f}"  # noqa
-        # ]
         fields += [
             f"maintenance {training_stats.report0('Timing/maintenance_sec', maintenance_time):<6.1f}"  # noqa
         ]
@@ -538,6 +651,22 @@ def training_loop(
                             drange=[-1, 1],
                             grid_size=grid_size,
                             client=client)
+
+            if train_fg:  # vis only object output
+                images = torch.cat([
+                    G_ema(z=z,
+                          c=c,
+                          noise_mode='const',
+                          nerf_kwargs=dict(not_render_background=True)).cpu()
+                    for z, c in zip(grid_z, grid_c)
+                ]).numpy()
+                save_image_grid(images,
+                                os.path.join(run_dir,
+                                            f'fakes{cur_nimg//1000:06d}_fg.png'),
+                                drange=[-1, 1],
+                                grid_size=grid_size,
+                                client=client)
+
             if vis_nerf_output:
                 # set a front camera matrix
                 camera_matrices = G_ema.synthesis.nerf.get_camera(

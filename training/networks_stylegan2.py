@@ -861,9 +861,6 @@ class NeRFSynthesisNetwork(torch.nn.Module):
             misc.assert_shape(ws, [None, self.num_ws, self.w_dim])
             ws = ws.to(torch.float32)
             w_idx = 0
-            # for res in self.block_resolutions:
-            #     if res <= self.nerf_res:
-            #         continue
             for res in self.syn_res:
                 block = getattr(self, f'b{res}')
                 block_ws.append(
@@ -876,9 +873,6 @@ class NeRFSynthesisNetwork(torch.nn.Module):
         nerf_feat = self.nerf(batch_size=batch_size, **nerf_kwargs)
 
         x, img = nerf_feat, None
-        # for res, cur_ws in zip(self.block_resolutions, block_ws):
-        #     block = getattr(self, f'b{res}')
-        #     x, img = block(x, img, cur_ws, **block_kwargs)
         for res, cur_ws in zip(self.syn_res, block_ws):
             block = getattr(self, f'b{res}')
             x, img = block(x, img, cur_ws, **block_kwargs)
